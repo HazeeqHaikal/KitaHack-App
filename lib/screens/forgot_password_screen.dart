@@ -72,7 +72,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         child: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppConstants.paddingL),
+            padding: const EdgeInsets.all(AppConstants.spacingL),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -122,7 +122,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   // Email Form
                   GlassContainer(
                     child: Padding(
-                      padding: const EdgeInsets.all(AppConstants.paddingL),
+                      padding: const EdgeInsets.all(AppConstants.spacingL),
                       child: Form(
                         key: _formKey,
                         child: Column(
@@ -165,7 +165,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   // Actions after email sent
                   GlassContainer(
                     child: Padding(
-                      padding: const EdgeInsets.all(AppConstants.paddingL),
+                      padding: const EdgeInsets.all(AppConstants.spacingL),
                       child: Column(
                         children: [
                           Text(

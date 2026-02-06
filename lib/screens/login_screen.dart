@@ -118,7 +118,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         child: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppConstants.paddingL),
+            padding: const EdgeInsets.all(AppConstants.spacingL),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -146,7 +146,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Login Form
                 GlassContainer(
                   child: Padding(
-                    padding: const EdgeInsets.all(AppConstants.paddingL),
+                    padding: const EdgeInsets.all(AppConstants.spacingL),
                     child: Form(
                       key: _formKey,
                       child: Column(
@@ -249,8 +249,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                               Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: AppConstants.paddingM,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: AppConstants.spacingM,
                                 ),
                                 child: Text(
                                   'OR',

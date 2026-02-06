@@ -105,7 +105,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
         child: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppConstants.paddingL),
+            padding: const EdgeInsets.all(AppConstants.spacingL),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -142,7 +142,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 // Register Form
                 GlassContainer(
                   child: Padding(
-                    padding: const EdgeInsets.all(AppConstants.paddingL),
+                    padding: const EdgeInsets.all(AppConstants.spacingL),
                     child: Form(
                       key: _formKey,
                       child: Column(
@@ -273,8 +273,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 ),
                               ),
                               Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: AppConstants.paddingM,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: AppConstants.spacingM,
                                 ),
                                 child: Text(
                                   'OR',
