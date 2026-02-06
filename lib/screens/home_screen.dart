@@ -171,13 +171,14 @@ class HomeScreen extends StatelessWidget {
       0,
       (sum, course) => sum + course.events.length,
     );
-    
+
     final now = DateTime.now();
     final oneWeekFromNow = now.add(const Duration(days: 7));
     final upcomingThisWeek = upcomingEvents.where((event) {
-      return event.dueDate.isAfter(now) && event.dueDate.isBefore(oneWeekFromNow);
+      return event.dueDate.isAfter(now) &&
+          event.dueDate.isBefore(oneWeekFromNow);
     }).length;
-    
+
     final highPriorityEvents = upcomingEvents.where((event) {
       return event.priority == EventPriority.high;
     }).length;

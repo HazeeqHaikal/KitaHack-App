@@ -34,7 +34,7 @@ class _ResultScreenState extends State<ResultScreen> {
   void _loadData() {
     // Get CourseInfo from navigation arguments (from Gemini analysis)
     final args = ModalRoute.of(context)?.settings.arguments;
-    
+
     if (args is CourseInfo) {
       // Real data from Gemini API
       _courseInfo = args;

@@ -653,7 +653,7 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
                 _addReminders = value;
               });
             },
-            activeColor: AppConstants.primaryColor,
+            activeThumbColor: AppConstants.primaryColor,
             secondary: Icon(
               Icons.alarm,
               color: _addReminders

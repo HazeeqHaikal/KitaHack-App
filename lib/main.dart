@@ -70,7 +70,6 @@ class DueApp extends StatelessWidget {
           primary: AppConstants.primaryColor,
           secondary: AppConstants.secondaryColor,
           surface: AppConstants.glassSurface,
-          background: AppConstants.backgroundStart,
           error: AppConstants.errorColor,
         ),
         useMaterial3: true,

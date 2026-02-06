@@ -53,7 +53,7 @@ class FirebaseService {
 
       // Create unique file path
       final filePath =
-          '${ApiConfig.syllabusStoragePath}/$userPath/$timestamp\_$fileName';
+          '${ApiConfig.syllabusStoragePath}/$userPath/${timestamp}_$fileName';
 
       print('Uploading file to: $filePath');
 
