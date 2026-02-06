@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:due/screens/onboarding_screen.dart';
+import 'package:due/screens/login_screen.dart';
+import 'package:due/screens/register_screen.dart';
+import 'package:due/screens/forgot_password_screen.dart';
 import 'package:due/screens/home_screen.dart';
 import 'package:due/screens/upload_screen.dart';
 import 'package:due/screens/result_screen.dart';
@@ -150,6 +153,9 @@ class DueApp extends StatelessWidget {
       initialRoute: '/onboarding',
       routes: {
         '/onboarding': (context) => const OnboardingScreen(),
+        '/login': (context) => const LoginScreen(),
+        '/register': (context) => const RegisterScreen(),
+        '/forgot-password': (context) => const ForgotPasswordScreen(),
         '/': (context) => const HomeScreen(),
         '/home': (context) => const HomeScreen(),
         '/upload': (context) => const UploadScreen(),

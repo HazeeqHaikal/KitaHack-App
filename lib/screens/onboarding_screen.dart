@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:due/utils/constants.dart';
-import 'package:due/screens/home_screen.dart';
+import 'package:due/screens/login_screen.dart';
 
 /// Onboarding screen to introduce the app to new users
 class OnboardingScreen extends StatefulWidget {
@@ -44,7 +44,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   void _finishOnboarding() {
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => const HomeScreen()),
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
     );
   }
 
