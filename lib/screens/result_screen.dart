@@ -27,21 +27,34 @@ class _ResultScreenState extends State<ResultScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (!_isLoaded) {
-      _loadSampleData();
+      _loadData();
       _isLoaded = true;
     }
   }
 
-  void _loadSampleData() {
-    // Get course code from navigation arguments, default to CS101
-    final args =
-        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-    final courseCode = args?['courseCode'] as String? ?? 'CS101';
-
-    _courseInfo =
-        MockDataService.getCourseByCode(courseCode) ??
-        MockDataService.getCourseByCode('CS101')!;
-    _events = List.from(_courseInfo!.events);
+  void _loadData() {
+    // Try to get CourseInfo from navigation arguments (from Gemini analysis)
+    final args = ModalRoute.of(context)?.settings.arguments;
+    
+    if (args is CourseInfo) {
+      // Real data from Gemini API
+      _courseInfo = args;
+      _events = List.from(_courseInfo!.events);
+      print('Loaded ${_events.length} events from Gemini analysis');
+    } else if (args is Map<String, dynamic>) {
+      // Legacy support: Mock data by course code
+      final courseCode = args['courseCode'] as String? ?? 'CS101';
+      _courseInfo =
+          MockDataService.getCourseByCode(courseCode) ??
+          MockDataService.getCourseByCode('CS101')!;
+      _events = List.from(_courseInfo!.events);
+      print('Loaded mock data for course: $courseCode');
+    } else {
+      // Default to mock data
+      _courseInfo = MockDataService.getCourseByCode('CS101')!;
+      _events = List.from(_courseInfo!.events);
+      print('Loaded default mock data');
+    }
   }
 
   List<AcademicEvent> get filteredEvents {

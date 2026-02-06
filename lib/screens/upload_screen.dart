@@ -1,8 +1,13 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/widgets/custom_buttons.dart';
 import 'package:due/widgets/info_banner.dart';
 import 'package:due/widgets/glass_container.dart';
+import 'package:due/services/gemini_service.dart';
+import 'package:due/services/firebase_service.dart';
+import 'package:due/models/course_info.dart';
 
 class UploadScreen extends StatefulWidget {
   const UploadScreen({super.key});
@@ -15,9 +20,14 @@ class _UploadScreenState extends State<UploadScreen>
     with SingleTickerProviderStateMixin {
   String? _fileName;
   String? _fileType;
+  File? _selectedFile;
   bool _isProcessing = false;
+  String _processingStatus = '';
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
+
+  final _geminiService = GeminiService();
+  final _firebaseService = FirebaseService();
 
   @override
   void initState() {
@@ -39,44 +49,130 @@ class _UploadScreenState extends State<UploadScreen>
   }
 
   void _pickFile() async {
-    // TODO: Implement file picker
-    setState(() {
-      _fileName = 'COMP101_Course_Outline_2026.pdf';
-      _fileType = 'pdf';
-    });
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+        withData: false,
+        withReadStream: false,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        final filePath = file.path;
+
+        if (filePath == null) {
+          _showError('Could not access the selected file');
+          return;
+        }
+
+        final fileSize = File(filePath).lengthSync();
+        final maxSize = AppConstants.maxFileSize * 1024 * 1024; // Convert MB to bytes
+
+        if (fileSize > maxSize) {
+          _showError(
+              'File too large. Maximum size is ${AppConstants.maxFileSize}MB');
+          return;
+        }
+
+        setState(() {
+          _selectedFile = File(filePath);
+          _fileName = file.name;
+          _fileType = file.extension;
+        });
+
+        print('File selected: $_fileName (${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB)');
+      }
+    } catch (e) {
+      print('Error picking file: $e');
+      _showError('Error selecting file: $e');
+    }
   }
 
   void _pickFromCamera() async {
-    // TODO: Implement camera picker
-    setState(() {
-      _fileName = 'syllabus_photo.jpg';
-      _fileType = 'image';
-    });
+    // TODO: Implement camera picker with image_picker package
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Camera feature coming soon! Please use file picker for now.'),
+        backgroundColor: AppConstants.warningColor,
+      ),
+    );
   }
 
   void _removeFile() {
     setState(() {
       _fileName = null;
       _fileType = null;
+      _selectedFile = null;
     });
   }
 
   void _processFile() async {
-    if (_fileName == null) return;
+    if (_selectedFile == null) {
+      _showError('No file selected');
+      return;
+    }
 
     setState(() {
       _isProcessing = true;
+      _processingStatus = 'Preparing file...';
     });
 
-    // Simulate processing with Gemini API
-    await Future.delayed(const Duration(seconds: 3));
+    try {
+      // Optional: Upload to Firebase Storage (if available)
+      if (_firebaseService.isAvailable) {
+        setState(() {
+          _processingStatus = 'Uploading to secure storage...';
+        });
 
-    if (mounted) {
+        await _firebaseService.uploadFile(
+          _selectedFile!,
+          userId: _firebaseService.currentUser?.uid,
+        );
+      }
+
+      // Analyze with Gemini
+      setState(() {
+        _processingStatus = 'Analyzing syllabus with AI...';
+      });
+
+      final courseInfo = await _geminiService.analyzeSyllabus(_selectedFile!);
+
+      if (!mounted) return;
+
       setState(() {
         _isProcessing = false;
+        _processingStatus = '';
       });
-      Navigator.pushNamed(context, '/result');
+
+      // Navigate to result screen with parsed data
+      Navigator.pushNamed(
+        context,
+        '/result',
+        arguments: courseInfo,
+      );
+    } catch (e) {
+      print('Error processing file: $e');
+
+      if (!mounted) return;
+
+      setState(() {
+        _isProcessing = false;
+        _processingStatus = '';
+      });
+
+      _showError('Failed to analyze syllabus: ${e.toString()}');
     }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppConstants.errorColor,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -336,12 +432,27 @@ class _UploadScreenState extends State<UploadScreen>
   }
 
   Widget _buildProcessButton() {
-    return PrimaryButton(
-      text: 'Analyze with AI',
-      icon: Icons.auto_awesome,
-      onPressed: _isProcessing ? null : _processFile,
-      isLoading: _isProcessing,
-      backgroundColor: AppConstants.successColor,
+    return Column(
+      children: [
+        PrimaryButton(
+          text: 'Analyze with AI',
+          icon: Icons.auto_awesome,
+          onPressed: _isProcessing ? null : _processFile,
+          isLoading: _isProcessing,
+          backgroundColor: AppConstants.successColor,
+        ),
+        if (_isProcessing && _processingStatus.isNotEmpty) ...[
+          const SizedBox(height: AppConstants.spacingM),
+          Text(
+            _processingStatus,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: AppConstants.textSecondary,
+              fontStyle: FontStyle.italic,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ],
     );
   }
 

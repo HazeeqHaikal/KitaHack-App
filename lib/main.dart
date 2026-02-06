@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:due/screens/onboarding_screen.dart';
 import 'package:due/screens/home_screen.dart';
 import 'package:due/screens/upload_screen.dart';
@@ -12,8 +13,33 @@ import 'package:due/screens/task_breakdown_screen.dart';
 import 'package:due/screens/study_allocator_screen.dart';
 import 'package:due/screens/resource_finder_screen.dart';
 import 'package:due/utils/constants.dart';
+import 'package:due/services/firebase_service.dart';
+import 'package:due/services/calendar_service.dart';
 
-void main() {
+void main() async {
+  // Ensure Flutter bindings are initialized
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Load environment variables
+  try {
+    await dotenv.load(fileName: '.env');
+    print('Environment variables loaded successfully');
+  } catch (e) {
+    print('Warning: Could not load .env file: $e');
+    print('App will continue but API features may not work without configuration');
+  }
+
+  // Initialize Firebase (optional - app works without it)
+  try {
+    await FirebaseService().initialize();
+  } catch (e) {
+    print('Warning: Firebase initialization failed: $e');
+    print('App will continue without Firebase storage');
+  }
+
+  // Initialize Calendar Service
+  CalendarService().initialize();
+
   // Ensure status bar is transparent for full immersive experience
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -23,6 +49,7 @@ void main() {
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
+
   runApp(const DueApp());
 }
 

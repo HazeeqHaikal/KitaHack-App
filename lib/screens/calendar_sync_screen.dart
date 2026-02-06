@@ -4,6 +4,8 @@ import 'package:due/utils/constants.dart';
 import 'package:due/widgets/custom_buttons.dart';
 import 'package:due/widgets/info_banner.dart';
 import 'package:due/widgets/glass_container.dart';
+import 'package:due/services/calendar_service.dart';
+import 'package:googleapis/calendar/v3.dart' as calendar;
 
 class CalendarSyncScreen extends StatefulWidget {
   const CalendarSyncScreen({super.key});
@@ -15,58 +17,81 @@ class CalendarSyncScreen extends StatefulWidget {
 class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
   String _selectedCalendar = 'primary';
   bool _addReminders = true;
-  int _reminderDays = 1;
+  List<int> _reminderDays = [1];
   bool _isSyncing = false;
-  bool _isAuthenticated = false;
+  bool _isLoading = true;
 
-  // Sample calendars (will be fetched from Google Calendar API)
-  final List<Map<String, dynamic>> _calendars = [
-    {
-      'id': 'primary',
-      'name': 'Personal',
-      'color': Colors.blue,
-      'icon': Icons.person,
-    },
-    {
-      'id': 'school',
-      'name': 'School',
-      'color': Colors.green,
-      'icon': Icons.school,
-    },
-    {'id': 'work', 'name': 'Work', 'color': Colors.orange, 'icon': Icons.work},
-  ];
+  final _calendarService = CalendarService();
+  List<calendar.CalendarListEntry> _calendars = [];
 
   @override
   void initState() {
     super.initState();
-    _checkAuthentication();
+    _initialize();
   }
 
-  void _checkAuthentication() {
-    // TODO: Check if user is authenticated with Google
-    // For now, simulate authentication check
-    Future.delayed(const Duration(milliseconds: 500), () {
-      setState(() {
-        _isAuthenticated =
-            false; // Change to true when Google Sign-In is implemented
-      });
+  void _initialize() async {
+    setState(() {
+      _isLoading = true;
     });
+
+    // Check if already authenticated
+    if (_calendarService.isAuthenticated) {
+      await _loadCalendars();
+    }
+
+    setState(() {
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _loadCalendars() async {
+    try {
+      final calendars = await _calendarService.getCalendars();
+      setState(() {
+        _calendars = calendars;
+        if (_calendars.isNotEmpty && _selectedCalendar == 'primary') {
+          _selectedCalendar = _calendars.first.id ?? 'primary';
+        }
+      });
+    } catch (e) {
+      print('Error loading calendars: $e');
+      _showError('Failed to load calendars: $e');
+    }
   }
 
   void _signInWithGoogle() async {
-    // TODO: Implement Google Sign-In
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Google Sign-In will be implemented here'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+    try {
+      setState(() {
+        _isLoading = true;
+      });
 
-    // Simulate sign-in
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() {
-      _isAuthenticated = true;
-    });
+      await _calendarService.signIn();
+
+      if (_calendarService.isAuthenticated) {
+        await _loadCalendars();
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Signed in as ${_calendarService.currentUser?.email}',
+              ),
+              backgroundColor: AppConstants.successColor,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error signing in: $e');
+      _showError('Failed to sign in: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   void _syncEvents() async {
@@ -75,12 +100,12 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
     final events = args?['events'] as List<AcademicEvent>?;
 
     if (events == null || events.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No events to sync'),
-          backgroundColor: AppConstants.errorColor,
-        ),
-      );
+      _showError('No events to sync');
+      return;
+    }
+
+    if (!_calendarService.isAuthenticated) {
+      _showError('Please sign in with Google first');
       return;
     }
 
@@ -88,21 +113,47 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
       _isSyncing = true;
     });
 
-    // TODO: Implement actual Google Calendar API sync
-    // Simulate sync process
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      final reminderDays = _addReminders ? _reminderDays : <int>[];
+      
+      final syncedCount = await _calendarService.syncEvents(
+        events,
+        _selectedCalendar,
+        reminderDays: reminderDays,
+      );
 
-    if (mounted) {
-      setState(() {
-        _isSyncing = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isSyncing = false;
+        });
 
-      // Show success dialog
-      _showSuccessDialog(events.length);
+        // Show success dialog
+        _showSuccessDialog(syncedCount, events.length);
+      }
+    } catch (e) {
+      print('Error syncing events: $e');
+      
+      if (mounted) {
+        setState(() {
+          _isSyncing = false;
+        });
+        
+        _showError('Failed to sync events: $e');
+      }
     }
   }
 
-  void _showSuccessDialog(int eventCount) {
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppConstants.errorColor,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _showSuccessDialog(int syncedCount, int totalCount) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -143,7 +194,7 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
             ),
             const SizedBox(height: AppConstants.spacingM),
             Text(
-              '$eventCount events have been synced to your Google Calendar',
+              '$syncedCount of $totalCount events have been synced to your Google Calendar',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
@@ -186,10 +237,30 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
           ),
         ),
         child: SafeArea(
-          child: !_isAuthenticated
-              ? _buildAuthenticationView()
-              : _buildSyncConfigurationView(events),
+          child: _isLoading
+              ? _buildLoadingView()
+              : !_calendarService.isAuthenticated
+                  ? _buildAuthenticationView()
+                  : _buildSyncConfigurationView(events),
         ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingView() {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(
+            color: AppConstants.primaryColor,
+          ),
+          SizedBox(height: AppConstants.spacingM),
+          Text(
+            'Loading...',
+            style: TextStyle(color: AppConstants.textSecondary),
+          ),
+        ],
       ),
     );
   }
@@ -474,20 +545,28 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
           ),
         ),
         const SizedBox(height: AppConstants.spacingM),
-        ..._calendars.map((calendar) => _buildCalendarOption(calendar)),
+        if (_calendars.isEmpty)
+          const Text(
+            'No calendars found',
+            style: TextStyle(color: AppConstants.textSecondary),
+          )
+        else
+          ..._calendars.map((calendar) => _buildCalendarOption(calendar)),
       ],
     );
   }
 
-  Widget _buildCalendarOption(Map<String, dynamic> calendar) {
-    final isSelected = _selectedCalendar == calendar['id'];
+  Widget _buildCalendarOption(calendar.CalendarListEntry calendar) {
+    final isSelected = _selectedCalendar == calendar.id;
+    final calendarName = calendar.summary ?? 'Unnamed Calendar';
+    final isPrimary = calendar.primary == true;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: AppConstants.spacingS),
       child: GlassContainer(
         onTap: () {
           setState(() {
-            _selectedCalendar = calendar['id'];
+            _selectedCalendar = calendar.id ?? 'primary';
           });
         },
         padding: const EdgeInsets.all(AppConstants.spacingM),
@@ -502,22 +581,39 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
             Container(
               padding: const EdgeInsets.all(AppConstants.spacingS),
               decoration: BoxDecoration(
-                color: (calendar['color'] as Color).withOpacity(0.1),
+                color: AppConstants.primaryColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(AppConstants.borderRadiusS),
                 border: Border.all(
-                  color: (calendar['color'] as Color).withOpacity(0.3),
+                  color: AppConstants.primaryColor.withOpacity(0.3),
                 ),
               ),
-              child: Icon(calendar['icon'], color: calendar['color'], size: 24),
+              child: Icon(
+                isPrimary ? Icons.person : Icons.calendar_today,
+                color: AppConstants.primaryColor,
+                size: 24,
+              ),
             ),
             const SizedBox(width: AppConstants.spacingM),
             Expanded(
-              child: Text(
-                calendar['name'],
-                style: TextStyle(
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  color: AppConstants.textPrimary,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    calendarName,
+                    style: TextStyle(
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: AppConstants.textPrimary,
+                    ),
+                  ),
+                  if (isPrimary)
+                    const Text(
+                      'Primary Calendar',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppConstants.textSecondary,
+                      ),
+                    ),
+                ],
               ),
             ),
             if (isSelected)
@@ -573,13 +669,17 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
           Wrap(
             spacing: AppConstants.spacingS,
             children: [1, 2, 3, 7].map((days) {
-              final isSelected = _reminderDays == days;
+              final isSelected = _reminderDays.contains(days);
               return FilterChip(
                 label: Text('$days ${days == 1 ? 'day' : 'days'} before'),
                 selected: isSelected,
                 onSelected: (selected) {
                   setState(() {
-                    _reminderDays = days;
+                    if (selected) {
+                      _reminderDays.add(days);
+                    } else {
+                      _reminderDays.remove(days);
+                    }
                   });
                 },
                 backgroundColor: AppConstants.glassSurface,
