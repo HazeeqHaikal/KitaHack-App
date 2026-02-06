@@ -18,21 +18,21 @@ class GeminiService {
   }
 
   /// Analyze a syllabus file (PDF or Image) and extract academic events
-  /// 
+  ///
   /// [file] - The syllabus file to analyze (PDF, JPG, PNG)
   /// Returns [CourseInfo] with extracted course details and events
   /// Throws [Exception] if analysis fails
   Future<CourseInfo> analyzeSyllabus(File file) async {
     try {
       print('Starting syllabus analysis for: ${file.path}');
-      
+
       // Read file as bytes
       final bytes = await file.readAsBytes();
-      
+
       // Determine MIME type based on file extension
       final extension = file.path.split('.').last.toLowerCase();
       final mimeType = _getMimeType(extension);
-      
+
       if (mimeType == null) {
         throw Exception('Unsupported file type: $extension');
       }
@@ -40,30 +40,26 @@ class GeminiService {
       // Create the content with both prompt and file
       final prompt = _buildAnalysisPrompt();
       final content = [
-        Content.multi([
-          TextPart(prompt),
-          DataPart(mimeType, bytes),
-        ])
+        Content.multi([TextPart(prompt), DataPart(mimeType, bytes)]),
       ];
 
       print('Sending request to Gemini API...');
-      
+
       // Generate content with retry logic
       final response = await _generateWithRetry(content);
-      
+
       if (response.text == null || response.text!.isEmpty) {
         throw Exception('Empty response from Gemini API');
       }
 
       print('Received response, parsing JSON...');
-      
+
       // Parse the JSON response
       final courseInfo = _parseGeminiResponse(response.text!);
-      
+
       print('Successfully extracted ${courseInfo.events.length} events');
-      
+
       return courseInfo;
-      
     } catch (e) {
       print('Error analyzing syllabus: $e');
       throw Exception('Failed to analyze syllabus: $e');
@@ -143,31 +139,30 @@ If you cannot extract a value, use null. If the document is not a syllabus, retu
     try {
       // Clean the response text - remove markdown formatting if present
       String cleanJson = responseText.trim();
-      
+
       // Remove markdown code blocks if present
       if (cleanJson.startsWith('```json')) {
         cleanJson = cleanJson.substring(7);
       } else if (cleanJson.startsWith('```')) {
         cleanJson = cleanJson.substring(3);
       }
-      
+
       if (cleanJson.endsWith('```')) {
         cleanJson = cleanJson.substring(0, cleanJson.length - 3);
       }
-      
+
       cleanJson = cleanJson.trim();
-      
+
       // Parse JSON
       final Map<String, dynamic> jsonData = json.decode(cleanJson);
-      
+
       // Check for error response
       if (jsonData.containsKey('error')) {
         throw Exception(jsonData['error']);
       }
-      
+
       // Convert to CourseInfo model
       return CourseInfo.fromJson(jsonData);
-      
     } catch (e) {
       print('Error parsing Gemini response: $e');
       print('Response text: $responseText');

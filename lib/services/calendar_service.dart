@@ -1,6 +1,5 @@
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/calendar/v3.dart' as calendar;
-import 'package:googleapis_auth/googleapis_auth.dart' as auth;
 import 'package:http/http.dart' as http;
 import 'package:due/config/api_config.dart';
 import 'package:due/models/academic_event.dart';
@@ -18,9 +17,7 @@ class CalendarService {
 
   /// Initialize Google Sign-In
   void initialize() {
-    _googleSignIn = GoogleSignIn(
-      scopes: ApiConfig.calendarScopes,
-    );
+    _googleSignIn = GoogleSignIn(scopes: ApiConfig.calendarScopes);
 
     // Listen to sign-in state changes
     _googleSignIn?.onCurrentUserChanged.listen((account) {
@@ -42,12 +39,12 @@ class CalendarService {
     try {
       print('Attempting Google Sign-In...');
       final account = await _googleSignIn?.signIn();
-      
+
       if (account != null) {
         print('Sign-in successful: ${account.email}');
         await _initializeCalendarApi();
       }
-      
+
       return account;
     } catch (e) {
       print('Error signing in: $e');
@@ -99,7 +96,7 @@ class CalendarService {
   }
 
   /// Sync academic events to Google Calendar
-  /// 
+  ///
   /// [events] - List of academic events to sync
   /// [calendarId] - Target calendar ID (use 'primary' for main calendar)
   /// [reminderDays] - Days before event to set reminder
@@ -134,7 +131,7 @@ class CalendarService {
     }
 
     print('Successfully synced $successCount/${events.length} events');
-    
+
     if (errors.isNotEmpty) {
       print('Errors: ${errors.join(", ")}');
     }
@@ -173,16 +170,16 @@ class CalendarService {
     final buffer = StringBuffer();
     buffer.writeln(event.description);
     buffer.writeln();
-    
+
     if (event.weightage != null) {
       buffer.writeln('Weight: ${event.weightage}');
     }
-    
+
     buffer.writeln('Type: ${event.type.name.toUpperCase()}');
     buffer.writeln('Priority: ${event.priority.name.toUpperCase()}');
     buffer.writeln();
     buffer.writeln('Created by Due - Your Academic Timeline, Automated');
-    
+
     return buffer.toString();
   }
 
@@ -195,10 +192,7 @@ class CalendarService {
       );
     }).toList();
 
-    return calendar.EventReminders(
-      useDefault: false,
-      overrides: overrides,
-    );
+    return calendar.EventReminders(useDefault: false, overrides: overrides);
   }
 
   /// Get Google Calendar color ID based on event priority

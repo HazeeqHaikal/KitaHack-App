@@ -7,7 +7,6 @@ import 'package:due/widgets/info_banner.dart';
 import 'package:due/widgets/glass_container.dart';
 import 'package:due/services/gemini_service.dart';
 import 'package:due/services/firebase_service.dart';
-import 'package:due/models/course_info.dart';
 
 class UploadScreen extends StatefulWidget {
   const UploadScreen({super.key});
@@ -67,11 +66,13 @@ class _UploadScreenState extends State<UploadScreen>
         }
 
         final fileSize = File(filePath).lengthSync();
-        final maxSize = AppConstants.maxFileSize * 1024 * 1024; // Convert MB to bytes
+        final maxSize =
+            AppConstants.maxFileSizeMB * 1024 * 1024; // Convert MB to bytes
 
         if (fileSize > maxSize) {
           _showError(
-              'File too large. Maximum size is ${AppConstants.maxFileSize}MB');
+            'File too large. Maximum size is ${AppConstants.maxFileSizeMB}MB',
+          );
           return;
         }
 
@@ -81,7 +82,9 @@ class _UploadScreenState extends State<UploadScreen>
           _fileType = file.extension;
         });
 
-        print('File selected: $_fileName (${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB)');
+        print(
+          'File selected: $_fileName (${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB)',
+        );
       }
     } catch (e) {
       print('Error picking file: $e');
@@ -93,7 +96,9 @@ class _UploadScreenState extends State<UploadScreen>
     // TODO: Implement camera picker with image_picker package
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Camera feature coming soon! Please use file picker for now.'),
+        content: Text(
+          'Camera feature coming soon! Please use file picker for now.',
+        ),
         backgroundColor: AppConstants.warningColor,
       ),
     );
@@ -146,11 +151,7 @@ class _UploadScreenState extends State<UploadScreen>
       });
 
       // Navigate to result screen with parsed data
-      Navigator.pushNamed(
-        context,
-        '/result',
-        arguments: courseInfo,
-      );
+      Navigator.pushNamed(context, '/result', arguments: courseInfo);
     } catch (e) {
       print('Error processing file: $e');
 

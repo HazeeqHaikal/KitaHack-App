@@ -43,3 +43,12 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Environment variables - NEVER commit these!
+.env
+.env.local
+.env.*.local
+
+# Firebase configuration files (add manually after setup)
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist

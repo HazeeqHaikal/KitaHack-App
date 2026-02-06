@@ -70,7 +70,7 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
 
       if (_calendarService.isAuthenticated) {
         await _loadCalendars();
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -115,7 +115,7 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
 
     try {
       final reminderDays = _addReminders ? _reminderDays : <int>[];
-      
+
       final syncedCount = await _calendarService.syncEvents(
         events,
         _selectedCalendar,
@@ -132,12 +132,12 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
       }
     } catch (e) {
       print('Error syncing events: $e');
-      
+
       if (mounted) {
         setState(() {
           _isSyncing = false;
         });
-        
+
         _showError('Failed to sync events: $e');
       }
     }
@@ -240,8 +240,8 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
           child: _isLoading
               ? _buildLoadingView()
               : !_calendarService.isAuthenticated
-                  ? _buildAuthenticationView()
-                  : _buildSyncConfigurationView(events),
+              ? _buildAuthenticationView()
+              : _buildSyncConfigurationView(events),
         ),
       ),
     );
@@ -252,9 +252,7 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          CircularProgressIndicator(
-            color: AppConstants.primaryColor,
-          ),
+          CircularProgressIndicator(color: AppConstants.primaryColor),
           SizedBox(height: AppConstants.spacingM),
           Text(
             'Loading...',
@@ -601,7 +599,9 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
                   Text(
                     calendarName,
                     style: TextStyle(
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                       color: AppConstants.textPrimary,
                     ),
                   ),

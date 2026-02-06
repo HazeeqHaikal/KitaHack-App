@@ -6,7 +6,6 @@ import 'package:due/widgets/event_card.dart';
 import 'package:due/widgets/custom_buttons.dart';
 import 'package:due/widgets/glass_container.dart';
 import 'package:due/widgets/empty_state.dart';
-import 'package:due/services/mock_data_service.dart';
 
 class ResultScreen extends StatefulWidget {
   const ResultScreen({super.key});
@@ -33,7 +32,7 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   void _loadData() {
-    // Try to get CourseInfo from navigation arguments (from Gemini analysis)
+    // Get CourseInfo from navigation arguments (from Gemini analysis)
     final args = ModalRoute.of(context)?.settings.arguments;
     
     if (args is CourseInfo) {
@@ -41,19 +40,15 @@ class _ResultScreenState extends State<ResultScreen> {
       _courseInfo = args;
       _events = List.from(_courseInfo!.events);
       print('Loaded ${_events.length} events from Gemini analysis');
-    } else if (args is Map<String, dynamic>) {
-      // Legacy support: Mock data by course code
-      final courseCode = args['courseCode'] as String? ?? 'CS101';
-      _courseInfo =
-          MockDataService.getCourseByCode(courseCode) ??
-          MockDataService.getCourseByCode('CS101')!;
-      _events = List.from(_courseInfo!.events);
-      print('Loaded mock data for course: $courseCode');
     } else {
-      // Default to mock data
-      _courseInfo = MockDataService.getCourseByCode('CS101')!;
-      _events = List.from(_courseInfo!.events);
-      print('Loaded default mock data');
+      // No data available - shouldn't reach here normally
+      print('Error: No course data provided to result screen');
+      // Navigate back to upload screen
+      Future.microtask(() {
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/upload');
+        }
+      });
     }
   }
 

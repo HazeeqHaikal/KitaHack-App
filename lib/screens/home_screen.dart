@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/widgets/custom_buttons.dart';
 import 'package:due/widgets/glass_container.dart';
-import 'package:due/services/mock_data_service.dart';
 import 'package:due/models/course_info.dart';
 import 'package:due/models/academic_event.dart';
 import 'package:due/utils/date_formatter.dart';
@@ -12,11 +11,9 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final courses = MockDataService.getSampleCourses();
-    final stats = MockDataService.getOverallStats();
-    final upcomingEvents = MockDataService.getAllUpcomingEvents()
-        .take(5)
-        .toList();
+    // No mock data - show empty state prompting user to upload
+    final courses = <CourseInfo>[];
+    final upcomingEvents = <AcademicEvent>[];
 
     return Scaffold(
       // Ensure the background gradient covers the entire scaffold
@@ -108,7 +105,7 @@ class HomeScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       // Stats overview
-                      _buildStatsGrid(context, stats),
+                      _buildStatsGrid(context, courses, upcomingEvents),
                       const SizedBox(height: AppConstants.spacingXL),
                       // Upcoming deadlines section
                       _buildSectionHeader(
@@ -163,7 +160,28 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStatsGrid(BuildContext context, Map<String, dynamic> stats) {
+  Widget _buildStatsGrid(
+    BuildContext context,
+    List<CourseInfo> courses,
+    List<AcademicEvent> upcomingEvents,
+  ) {
+    // Calculate stats from actual data
+    final totalCourses = courses.length;
+    final totalEvents = courses.fold<int>(
+      0,
+      (sum, course) => sum + course.events.length,
+    );
+    
+    final now = DateTime.now();
+    final oneWeekFromNow = now.add(const Duration(days: 7));
+    final upcomingThisWeek = upcomingEvents.where((event) {
+      return event.dueDate.isAfter(now) && event.dueDate.isBefore(oneWeekFromNow);
+    }).length;
+    
+    final highPriorityEvents = upcomingEvents.where((event) {
+      return event.priority == EventPriority.high;
+    }).length;
+
     return GridView.count(
       crossAxisCount: 2,
       shrinkWrap: true,
@@ -176,28 +194,28 @@ class HomeScreen extends StatelessWidget {
           context,
           icon: Icons.library_books,
           label: 'Active Courses',
-          value: stats['totalCourses'].toString(),
+          value: totalCourses.toString(),
           color: AppConstants.primaryColor,
         ),
         _buildStatCard(
           context,
           icon: Icons.event_note,
           label: 'Total Events',
-          value: stats['totalEvents'].toString(),
+          value: totalEvents.toString(),
           color: AppConstants.secondaryColor,
         ),
         _buildStatCard(
           context,
           icon: Icons.alarm,
           label: 'This Week',
-          value: stats['upcomingThisWeek'].toString(),
+          value: upcomingThisWeek.toString(),
           color: AppConstants.warningColor,
         ),
         _buildStatCard(
           context,
           icon: Icons.priority_high,
           label: 'High Priority',
-          value: stats['highPriorityEvents'].toString(),
+          value: highPriorityEvents.toString(),
           color: AppConstants.errorColor,
         ),
       ],

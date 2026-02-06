@@ -26,7 +26,9 @@ void main() async {
     print('Environment variables loaded successfully');
   } catch (e) {
     print('Warning: Could not load .env file: $e');
-    print('App will continue but API features may not work without configuration');
+    print(
+      'App will continue but API features may not work without configuration',
+    );
   }
 
   // Initialize Firebase (optional - app works without it)

@@ -6,11 +6,13 @@ class ApiConfig {
   // Gemini API Configuration
   static String get geminiApiKey => dotenv.env['GEMINI_API_KEY'] ?? '';
   static const String geminiModel = 'gemini-1.5-pro';
-  static const String geminiBaseUrl = 'https://generativelanguage.googleapis.com';
+  static const String geminiBaseUrl =
+      'https://generativelanguage.googleapis.com';
 
   // Google OAuth Configuration
   static String get googleClientId => dotenv.env['GOOGLE_CLIENT_ID'] ?? '';
-  static String get googleClientSecret => dotenv.env['GOOGLE_CLIENT_SECRET'] ?? '';
+  static String get googleClientSecret =>
+      dotenv.env['GOOGLE_CLIENT_SECRET'] ?? '';
 
   // API Configuration
   static const int maxRetries = 3;

@@ -37,7 +37,7 @@ class FirebaseService {
   bool get isAvailable => _initialized;
 
   /// Upload a file to Firebase Storage
-  /// 
+  ///
   /// [file] - The file to upload
   /// [userId] - Optional user ID for organizing files
   /// Returns the download URL of the uploaded file
@@ -50,31 +50,32 @@ class FirebaseService {
       final fileName = path.basename(file.path);
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final userPath = userId ?? 'anonymous';
-      
+
       // Create unique file path
-      final filePath = '${ApiConfig.syllabusStoragePath}/$userPath/$timestamp\_$fileName';
-      
+      final filePath =
+          '${ApiConfig.syllabusStoragePath}/$userPath/$timestamp\_$fileName';
+
       print('Uploading file to: $filePath');
-      
+
       // Upload file
       final ref = storage.ref().child(filePath);
       final uploadTask = ref.putFile(file);
-      
+
       // Monitor upload progress
       uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
-        final progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        final progress =
+            (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
         print('Upload progress: ${progress.toStringAsFixed(1)}%');
       });
-      
+
       // Wait for upload to complete
       final snapshot = await uploadTask;
-      
+
       // Get download URL
       final downloadUrl = await snapshot.ref.getDownloadURL();
       print('File uploaded successfully: $downloadUrl');
-      
+
       return downloadUrl;
-      
     } catch (e) {
       print('Error uploading file: $e');
       throw Exception('Failed to upload file: $e');

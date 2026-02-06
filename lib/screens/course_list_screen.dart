@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/widgets/glass_container.dart';
-import 'package:due/services/mock_data_service.dart';
 import 'package:due/models/course_info.dart';
 
 class CourseListScreen extends StatelessWidget {
@@ -9,7 +8,8 @@ class CourseListScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final courses = MockDataService.getSampleCourses();
+    // No mock data - show empty state
+    final courses = <CourseInfo>[];
 
     return Scaffold(
       extendBodyBehindAppBar: true,
