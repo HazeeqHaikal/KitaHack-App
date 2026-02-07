@@ -8,6 +8,9 @@ import 'package:due/widgets/glass_container.dart';
 import 'package:due/services/gemini_service.dart';
 import 'package:due/services/firebase_service.dart';
 import 'package:due/services/storage_service.dart';
+import 'package:due/services/response_cache_service.dart';
+import 'package:due/services/usage_tracking_service.dart';
+import 'package:due/config/api_config.dart';
 
 class UploadScreen extends StatefulWidget {
   const UploadScreen({super.key});
@@ -29,6 +32,10 @@ class _UploadScreenState extends State<UploadScreen>
   final _geminiService = GeminiService();
   final _firebaseService = FirebaseService();
   final _storageService = StorageService();
+  final _responseCache = ResponseCacheService();
+  final _usageTracking = UsageTrackingService();
+
+  bool _hasCachedResponse = false;
 
   @override
   void initState() {
@@ -83,6 +90,11 @@ class _UploadScreenState extends State<UploadScreen>
           _fileName = file.name;
           _fileType = file.extension;
         });
+
+        // Check if cache exists for this file
+        if (ApiConfig.enableResponseCache) {
+          _checkCachedResponse();
+        }
 
         print(
           'File selected: $_fileName (${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB)',
@@ -231,6 +243,10 @@ class _UploadScreenState extends State<UploadScreen>
                         'We support PDF documents and image files (JPG, PNG). Maximum file size: 10MB',
                   ),
                   const SizedBox(height: AppConstants.spacingL),
+                  // Dev mode banner
+                  if (ApiConfig.devMode) _buildDevModeBanner(),
+                  if (ApiConfig.devMode)
+                    const SizedBox(height: AppConstants.spacingL),
                   // Upload options
                   if (_fileName == null) ...[
                     _buildUploadOptions(),
@@ -453,8 +469,71 @@ class _UploadScreenState extends State<UploadScreen>
   }
 
   Widget _buildProcessButton() {
+    const estimatedCost = 0.12; // Approximate cost per syllabus analysis in RM
+
     return Column(
       children: [
+        // Cache/Cost info banner
+        if (_hasCachedResponse)
+          Container(
+            margin: const EdgeInsets.only(bottom: AppConstants.spacingM),
+            child: GlassContainer(
+              child: ListTile(
+                dense: true,
+                leading: const Icon(
+                  Icons.check_circle,
+                  color: AppConstants.successColor,
+                  size: 20,
+                ),
+                title: const Text(
+                  'Cached Response Available',
+                  style: TextStyle(
+                    color: AppConstants.successColor,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: const Text(
+                  'Using saved response - no API charge',
+                  style: TextStyle(
+                    color: AppConstants.textSecondary,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        if (!_hasCachedResponse &&
+            !ApiConfig.devMode &&
+            ApiConfig.enableUsageTracking)
+          Container(
+            margin: const EdgeInsets.only(bottom: AppConstants.spacingM),
+            child: GlassContainer(
+              child: ListTile(
+                dense: true,
+                leading: const Icon(
+                  Icons.paid,
+                  color: AppConstants.primaryColor,
+                  size: 20,
+                ),
+                title: Text(
+                  'Estimated cost: ~RM ${estimatedCost.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: const Text(
+                  'Gemini API will be called for analysis',
+                  style: TextStyle(
+                    color: AppConstants.textSecondary,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ),
+          ),
         PrimaryButton(
           text: 'Analyze with AI',
           icon: Icons.auto_awesome,
@@ -552,5 +631,38 @@ class _UploadScreenState extends State<UploadScreen>
         ],
       ),
     );
+  }
+
+  Widget _buildDevModeBanner() {
+    return GlassContainer(
+      child: ListTile(
+        leading: const Icon(Icons.science, color: Colors.orange, size: 24),
+        title: const Text(
+          '🧪 Development Mode Active',
+          style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+        ),
+        subtitle: const Text(
+          'Using mock data - no API charges will be incurred',
+          style: TextStyle(color: AppConstants.textSecondary, fontSize: 12),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _checkCachedResponse() async {
+    if (_selectedFile == null) return;
+
+    try {
+      final hasCache = await _responseCache.hasCachedResponse(_selectedFile!);
+      setState(() {
+        _hasCachedResponse = hasCache;
+      });
+
+      if (hasCache) {
+        print('Cached response available for this file');
+      }
+    } catch (e) {
+      print('Error checking cache: $e');
+    }
   }
 }

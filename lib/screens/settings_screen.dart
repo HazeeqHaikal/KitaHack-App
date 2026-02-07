@@ -4,6 +4,9 @@ import 'package:due/widgets/glass_container.dart';
 import 'package:due/services/firebase_service.dart';
 import 'package:due/services/storage_service.dart';
 import 'package:due/services/calendar_service.dart';
+import 'package:due/services/usage_tracking_service.dart';
+import 'package:due/services/response_cache_service.dart';
+import 'package:due/config/api_config.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -16,6 +19,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _firebaseService = FirebaseService();
   final _storageService = StorageService();
   final _calendarService = CalendarService();
+  final _usageTracking = UsageTrackingService();
+  final _responseCache = ResponseCacheService();
+
+  Map<String, dynamic>? _usageSummary;
+  bool _isLoadingUsage = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUsageStats();
+  }
+
+  Future<void> _loadUsageStats() async {
+    if (!ApiConfig.enableUsageTracking) {
+      setState(() => _isLoadingUsage = false);
+      return;
+    }
+
+    try {
+      final summary = await _usageTracking.getUsageSummary();
+      setState(() {
+        _usageSummary = summary;
+        _isLoadingUsage = false;
+      });
+    } catch (e) {
+      print('Error loading usage stats: $e');
+      setState(() => _isLoadingUsage = false);
+    }
+  }
 
   String get _userEmail {
     final user = _firebaseService.currentUser;
@@ -59,6 +91,72 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onTap: null,
                 ),
                 const SizedBox(height: AppConstants.spacingL),
+              ],
+
+              // API Usage Section
+              _buildSectionTitle('API Usage & Development'),
+              if (ApiConfig.devMode)
+                Container(
+                  margin: const EdgeInsets.only(bottom: AppConstants.spacingS),
+                  child: GlassContainer(
+                    child: ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.science,
+                          color: Colors.orange,
+                          size: 20,
+                        ),
+                      ),
+                      title: const Text(
+                        '🧪 Development Mode',
+                        style: TextStyle(
+                          color: Colors.orange,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      subtitle: const Text(
+                        'Using mock data - no API charges',
+                        style: TextStyle(
+                          color: AppConstants.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              if (!_isLoadingUsage && _usageSummary != null)
+                ..._buildUsageStats(),
+              if (_isLoadingUsage)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(AppConstants.spacingL),
+                    child: CircularProgressIndicator(
+                      color: AppConstants.primaryColor,
+                    ),
+                  ),
+                ),
+              _buildSettingItem(
+                context,
+                icon: Icons.cleaning_services,
+                title: 'Clear Response Cache',
+                subtitle: 'Remove cached API responses to save space',
+                onTap: () => _showClearCacheDialog(context),
+              ),
+              _buildSettingItem(
+                context,
+                icon: Icons.refresh,
+                title: 'Reset Usage Statistics',
+                subtitle: 'Clear API usage tracking data',
+                onTap: () => _showResetUsageDialog(context),
+              ),
+              const SizedBox(height: AppConstants.spacingL),
+
+              if (_isSignedIn) ...[
                 _buildSectionTitle('Data Management'),
                 _buildSettingItem(
                   context,
@@ -432,6 +530,265 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
             child: const Text(
               'Clean Up',
+              style: TextStyle(color: AppConstants.errorColor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildUsageStats() {
+    if (_usageSummary == null) return [];
+
+    final totalCost = _usageSummary!['totalCost'] as double;
+    final todayCost = _usageSummary!['todayCost'] as double;
+    final weekCost = _usageSummary!['weekCost'] as double;
+    final totalCalls = _usageSummary!['totalCalls'] as int;
+    final todayCalls = _usageSummary!['todayCalls'] as int;
+    final syllabusCount = _usageSummary!['syllabusCount'] as int;
+    final effortCount = _usageSummary!['effortCount'] as int;
+
+    final costColor = _getCostColor(totalCost);
+    final costEmoji = _getCostEmoji(totalCost);
+
+    return [
+      Container(
+        margin: const EdgeInsets.only(bottom: AppConstants.spacingS),
+        child: GlassContainer(
+          child: Padding(
+            padding: const EdgeInsets.all(AppConstants.spacingM),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Total Cost',
+                      style: TextStyle(
+                        color: AppConstants.textSecondary,
+                        fontSize: 14,
+                      ),
+                    ),
+                    Text(
+                      '$costEmoji RM ${totalCost.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        color: costColor,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppConstants.spacingS),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildCostStat('Today', todayCost, todayCalls),
+                    _buildCostStat('This Week', weekCost, null),
+                    _buildCostStat('All Time', totalCost, totalCalls),
+                  ],
+                ),
+                const Divider(
+                  color: AppConstants.textSecondary,
+                  height: AppConstants.spacingL,
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildCallTypeStat(
+                      'Syllabus Analysis',
+                      syllabusCount,
+                      Icons.description,
+                    ),
+                    Container(
+                      width: 1,
+                      height: 40,
+                      color: AppConstants.textSecondary,
+                    ),
+                    _buildCallTypeStat(
+                      'Effort Estimates',
+                      effortCount,
+                      Icons.timer,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ];
+  }
+
+  Widget _buildCostStat(String label, double cost, int? calls) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: AppConstants.textSecondary,
+            fontSize: 11,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'RM ${cost.toStringAsFixed(2)}',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        if (calls != null)
+          Text(
+            '$calls ${calls == 1 ? 'call' : 'calls'}',
+            style: const TextStyle(
+              color: AppConstants.textSecondary,
+              fontSize: 10,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildCallTypeStat(String label, int count, IconData icon) {
+    return Column(
+      children: [
+        Icon(icon, color: AppConstants.primaryColor, size: 24),
+        const SizedBox(height: 4),
+        Text(
+          '$count',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          label,
+          style: const TextStyle(
+            color: AppConstants.textSecondary,
+            fontSize: 11,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Color _getCostColor(double cost) {
+    if (cost < 1.0) return AppConstants.successColor;
+    if (cost < 5.0) return Colors.orange;
+    return AppConstants.errorColor;
+  }
+
+  String _getCostEmoji(double cost) {
+    if (cost < 1.0) return '✅';
+    if (cost < 5.0) return '⚠️';
+    return '🚨';
+  }
+
+  void _showClearCacheDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppConstants.backgroundEnd,
+        title: const Text(
+          'Clear Response Cache?',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'This will remove all cached API responses. You may see more API usage as repeated uploads will require new API calls.',
+          style: TextStyle(color: AppConstants.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppConstants.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                await _responseCache.clearCache();
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✅ Response cache cleared'),
+                    backgroundColor: AppConstants.successColor,
+                  ),
+                );
+              } catch (e) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to clear cache: $e'),
+                    backgroundColor: AppConstants.errorColor,
+                  ),
+                );
+              }
+            },
+            child: const Text(
+              'Clear Cache',
+              style: TextStyle(color: AppConstants.primaryColor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showResetUsageDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppConstants.backgroundEnd,
+        title: const Text(
+          'Reset Usage Statistics?',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'This will clear all API usage tracking data. Your cost history will be permanently deleted.',
+          style: TextStyle(color: AppConstants.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppConstants.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                await _usageTracking.resetTracking();
+                await _loadUsageStats();
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✅ Usage statistics reset'),
+                    backgroundColor: AppConstants.successColor,
+                  ),
+                );
+              } catch (e) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to reset usage: $e'),
+                    backgroundColor: AppConstants.errorColor,
+                  ),
+                );
+              }
+            },
+            child: const Text(
+              'Reset',
               style: TextStyle(color: AppConstants.errorColor),
             ),
           ),

@@ -6,6 +6,7 @@ import 'package:due/widgets/glass_container.dart';
 import 'package:due/widgets/custom_buttons.dart';
 import 'package:due/services/gemini_service.dart';
 import 'package:due/services/calendar_service.dart';
+import 'package:due/config/api_config.dart';
 
 class StudyAllocatorScreen extends StatefulWidget {
   const StudyAllocatorScreen({super.key});
@@ -328,6 +329,41 @@ class _StudyAllocatorScreenState extends State<StudyAllocatorScreen> {
                       ),
                     ),
                     const SizedBox(height: AppConstants.spacingM),
+                    // Dev Mode indicator
+                    if (ApiConfig.devMode)
+                      GlassContainer(
+                        padding: const EdgeInsets.all(AppConstants.spacingM),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.science, color: Colors.orange, size: 20),
+                            SizedBox(width: AppConstants.spacingM),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '🧪 Development Mode',
+                                    style: TextStyle(
+                                      color: Colors.orange,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Using mock effort estimates',
+                                    style: TextStyle(
+                                      color: AppConstants.textSecondary,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (ApiConfig.devMode)
+                      const SizedBox(height: AppConstants.spacingM),
                     if (_studySessions.isNotEmpty)
                       GlassContainer(
                         padding: const EdgeInsets.all(AppConstants.spacingM),

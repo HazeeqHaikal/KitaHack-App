@@ -107,6 +107,56 @@ class CalendarService {
     }
   }
 
+  /// Create a new Google Calendar
+  ///
+  /// [calendarName] - Name for the new calendar
+  /// [description] - Optional description
+  /// [colorId] - Optional color ID (1-24)
+  /// Returns the created calendar entry with its ID
+  Future<calendar.CalendarListEntry> createCalendar(
+    String calendarName, {
+    String? description,
+    String? colorId,
+  }) async {
+    if (_calendarApi == null) {
+      throw Exception('Not authenticated. Please sign in first.');
+    }
+
+    try {
+      print('Creating new calendar: $calendarName');
+
+      // Create calendar object
+      final newCalendar = calendar.Calendar()
+        ..summary = calendarName
+        ..description = description ?? 'Created by Due App'
+        ..timeZone = 'Asia/Kuala_Lumpur'; // Default timezone
+
+      // Insert the calendar
+      final createdCalendar = await _calendarApi!.calendars.insert(newCalendar);
+      print('Calendar created with ID: ${createdCalendar.id}');
+
+      // Get the calendar list entry (includes color and other metadata)
+      final calendarListEntry = await _calendarApi!.calendarList.get(
+        createdCalendar.id!,
+      );
+
+      // Update color if specified
+      if (colorId != null) {
+        calendarListEntry.colorId = colorId;
+        await _calendarApi!.calendarList.update(
+          calendarListEntry,
+          calendarListEntry.id!,
+        );
+      }
+
+      print('Successfully created calendar: $calendarName');
+      return calendarListEntry;
+    } catch (e) {
+      print('Error creating calendar: $e');
+      rethrow;
+    }
+  }
+
   /// Sync academic events to Google Calendar
   ///
   /// [events] - List of academic events to sync

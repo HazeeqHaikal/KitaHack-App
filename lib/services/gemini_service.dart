@@ -2,12 +2,17 @@ import 'dart:io';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:due/config/api_config.dart';
 import 'package:due/models/course_info.dart';
+import 'package:due/services/mock_data_service.dart';
+import 'package:due/services/usage_tracking_service.dart';
+import 'package:due/services/response_cache_service.dart';
 import 'dart:convert';
 
 /// Service for interacting with Google Gemini API
 /// Handles syllabus analysis and academic event extraction
 class GeminiService {
   late final GenerativeModel _model;
+  final UsageTrackingService _usageTracking = UsageTrackingService();
+  final ResponseCacheService _responseCache = ResponseCacheService();
 
   GeminiService() {
     ApiConfig.validateConfig();
@@ -25,6 +30,34 @@ class GeminiService {
   Future<CourseInfo> analyzeSyllabus(File file) async {
     try {
       print('Starting syllabus analysis for: ${file.path}');
+
+      // Check if dev mode is enabled
+      if (ApiConfig.devMode) {
+        print('DEV MODE: Using mock data instead of API call');
+        await Future.delayed(const Duration(seconds: 2)); // Simulate processing
+        final mockCourses = MockDataService.getSampleCourses();
+        return mockCourses.first; // Return first mock course
+      }
+
+      // Check cache first (if enabled)
+      if (ApiConfig.enableResponseCache) {
+        final cachedResponse = await _responseCache.getCachedResponse(file);
+        if (cachedResponse != null) {
+          print('Using cached response (saved API call)');
+          return cachedResponse;
+        }
+      }
+
+      // Check usage tracking and daily limit
+      if (ApiConfig.enableUsageTracking) {
+        final limitExceeded = await _usageTracking.isDailyLimitExceeded();
+        if (limitExceeded) {
+          final todayCalls = await _usageTracking.getTodayCalls();
+          final limit = await _usageTracking.getDailyLimit();
+          print('WARNING: Daily API limit exceeded ($todayCalls/$limit calls)');
+          // Still proceed but warn user
+        }
+      }
 
       // Read file as bytes
       final bytes = await file.readAsBytes();
@@ -45,6 +78,11 @@ class GeminiService {
 
       print('Sending request to Gemini API...');
 
+      // Log API call for tracking
+      if (ApiConfig.enableUsageTracking) {
+        await _usageTracking.logApiCall('syllabus');
+      }
+
       // Generate content with retry logic
       final response = await _generateWithRetry(content);
 
@@ -58,6 +96,11 @@ class GeminiService {
       final courseInfo = _parseGeminiResponse(response.text!);
 
       print('Successfully extracted ${courseInfo.events.length} events');
+
+      // Cache the response (if enabled)
+      if (ApiConfig.enableResponseCache) {
+        await _responseCache.cacheResponse(file, courseInfo);
+      }
 
       return courseInfo;
     } catch (e) {
@@ -182,6 +225,18 @@ If you cannot extract a value, use null. If the document is not a syllabus, retu
     try {
       print('Estimating study effort for: $eventTitle');
 
+      // Check if dev mode is enabled
+      if (ApiConfig.devMode) {
+        print('DEV MODE: Using mock effort estimation');
+        await Future.delayed(const Duration(seconds: 1)); // Simulate processing
+        return _getMockEffortEstimate(eventType);
+      }
+
+      // Log API call for tracking
+      if (ApiConfig.enableUsageTracking) {
+        await _usageTracking.logApiCall('effort');
+      }
+
       final prompt =
           '''
 Analyze this academic event and estimate the required study/preparation time.
@@ -252,30 +307,37 @@ Recommend 2-5 study sessions total.
     } catch (e) {
       print('Error estimating study effort: $e');
       // Return reasonable defaults on error
-      return {
-        'totalHours': eventType == 'exam' ? 10 : 6,
-        'sessionsRecommended': 3,
-        'hoursPerSession': eventType == 'exam' ? 3 : 2,
-        'breakdown': [
-          {
-            'phase': 'Preparation',
-            'hours': eventType == 'exam' ? 6 : 4,
-            'description': 'Initial study and understanding',
-          },
-          {
-            'phase': 'Practice/Work',
-            'hours': eventType == 'exam' ? 3 : 2,
-            'description': 'Active work and application',
-          },
-          {
-            'phase': 'Review',
-            'hours': 1,
-            'description': 'Final review and refinement',
-          },
-        ],
-        'reasoning': 'Default estimate (AI estimation failed)',
-      };
+      return _getMockEffortEstimate(eventType);
     }
+  }
+
+  /// Get mock effort estimate for dev mode or error fallback
+  Map<String, dynamic> _getMockEffortEstimate(String eventType) {
+    return {
+      'totalHours': eventType == 'exam' ? 10 : 6,
+      'sessionsRecommended': 3,
+      'hoursPerSession': eventType == 'exam' ? 3 : 2,
+      'breakdown': [
+        {
+          'phase': 'Preparation',
+          'hours': eventType == 'exam' ? 6 : 4,
+          'description': 'Initial study and understanding',
+        },
+        {
+          'phase': 'Practice/Work',
+          'hours': eventType == 'exam' ? 3 : 2,
+          'description': 'Active work and application',
+        },
+        {
+          'phase': 'Review',
+          'hours': 1,
+          'description': 'Final review and refinement',
+        },
+      ],
+      'reasoning': ApiConfig.devMode
+          ? 'Mock estimate (Dev Mode enabled)'
+          : 'Default estimate (AI estimation failed)',
+    };
   }
 
   /// Get MIME type from file extension

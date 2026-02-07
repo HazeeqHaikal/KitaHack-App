@@ -42,6 +42,9 @@ dependencies:
   flutter_dotenv: ^5.2.1
   shared_preferences: ^2.3.3
   
+  # Utilities
+  crypto: ^3.0.3
+  
   # State Management
   provider: ^6.1.2
 

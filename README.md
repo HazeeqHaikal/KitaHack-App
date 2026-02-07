@@ -424,7 +424,194 @@ Gemini handles various date formats:
 
 ---
 
+## � API Cost Management
+
+### Overview
+
+The app uses Google Gemini 2.5 Pro API which has usage-based pricing. To help you monitor and control costs during development and testing, **Due** includes comprehensive cost tracking and management features.
+
+### Cost Estimates (as of February 2026)
+
+| Operation | Estimated Cost (RM) | Description |
+|-----------|---------------------|-------------|
+| **Syllabus Analysis** | ~RM 0.10-0.15 | Full PDF/image analysis with multimodal input (~10K tokens) |
+| **Effort Estimation** | ~RM 0.01-0.02 | Text-only analysis for study time calculation (~500 tokens) |
+| **Daily Testing** | ~RM 1.50 | Based on 10 API calls (default limit) |
+
+**Your costs will vary** based on document size, number of events, and API usage frequency.
+
+### 🧪 Development Mode (Recommended for Testing)
+
+**Development Mode** allows you to test all features WITHOUT making real API calls or incurring charges.
+
+#### Enable Development Mode
+
+1. Open your `.env` file in the project root
+2. Add or uncomment this line:
+   ```bash
+   DEV_MODE=true
+   ```
+3. Restart the app
+
+#### What Happens in Dev Mode
+
+- ✅ **Upload Screen**: Returns mock course data instantly (no Gemini API call)
+- ✅ **Study Allocator**: Uses pre-calculated effort estimates (no AI inference)
+- ✅ **UI Testing**: All features work normally with realistic mock data
+- ✅ **No Charges**: Zero API usage - perfect for UI/UX development
+- ⚠️ **Dev Mode Badge**: Orange banner displays on relevant screens
+
+#### When to Use Dev Mode
+
+- Testing UI layouts and navigation
+- Developing new features
+- Demo presentations
+- Continuous integration testing
+- Any time you want to avoid API charges
+
+### 📊 Usage Tracking
+
+The app automatically tracks all API calls and estimates costs (can be disabled in `.env`).
+
+#### View Usage Statistics
+
+1. Open **Settings** from the home screen
+2. Scroll to **"API Usage & Development"** section
+3. View your usage dashboard:
+   - Total estimated costs (Today, This Week, All Time)
+   - Call breakdown (Syllabus Analysis vs Effort Estimation)
+   - Visual cost indicators (✅ Green, ⚠️ Yellow, 🚨 Red)
+   - Last API call timestamp
+
+#### Daily Limit Protection
+
+- Default: **10 API calls per day** (~RM 1.50 max)
+- Warning displayed when limit is reached
+- Customizable limit in `UsageTrackingService`
+- Prevents accidental overspending during testing
+
+### 💾 Response Caching
+
+The app caches successful API responses to avoid redundant analysis.
+
+#### How It Works
+
+- ✅ First upload of a file → API call (charged)
+- ✅ Same file uploaded again → Cached response (FREE)
+- ✅ Cache expires after 7 days automatically
+- ✅ Cache status shown in upload screen
+
+#### Benefits
+
+- 🎯 **Saves Money**: Repeated uploads during testing don't trigger new API calls
+- ⚡ **Faster**: Instant results from cache (no API latency)
+- 🔄 **Automatic**: No configuration needed - works out of the box
+
+#### Manage Cache
+
+- **View Cache**: Settings → "API Usage & Development"
+- **Clear Cache**: Tap "Clear Response Cache" to remove all cached responses
+- **Disable Cache**: Set `ENABLE_RESPONSE_CACHE=false` in `.env`
+
+### 🛠️ Configuration Options
+
+Add these to your `.env` file:
+
+```bash
+# Development Mode - Use mock data instead of API calls
+DEV_MODE=true
+
+# Usage Tracking - Monitor API costs (default: true)
+ENABLE_USAGE_TRACKING=true
+
+# Response Caching - Reuse previous responses (default: true)
+ENABLE_RESPONSE_CACHE=true
+```
+
+### 📈 Cost Optimization Best Practices
+
+1. **Use Dev Mode for UI Testing**
+   - Enable `DEV_MODE=true` when working on frontend
+   - Switch to production mode only when testing actual AI features
+
+2. **Leverage Response Cache**
+   - Keep caching enabled during development
+   - Test with the same files repeatedly to use cached responses
+   - Clear cache only when syllabus content changes
+
+3. **Monitor Your Usage**
+   - Check Settings → API Usage regularly
+   - Set daily limits appropriate for your budget
+   - Reset statistics monthly to track spending patterns
+
+4. **Test with Mock Data First**
+   - Use `MockDataService` for unit tests
+   - Validate UI flow before making real API calls
+   - Create test cases with sample data
+
+5. **Optimize File Sizes**
+   - Compress large PDFs before uploading
+   - Use lower resolution images when possible
+   - Smaller files = fewer input tokens = lower costs
+
+### 🚨 Cost Alert System
+
+The app includes built-in warnings to prevent unexpected charges:
+
+- **Daily Limit Warning**: Alert when you exceed configured daily limit
+- **Cache Available Badge**: Green badge shows when cached response exists
+- **Cost Estimate Display**: Shows ~RM 0.12 before each analysis
+- **Dev Mode Indicators**: Orange banners remind you when using mock data
+
+### 📱 Where Cost Info Appears
+
+| Screen | Cost Information |
+|--------|------------------|
+| **Upload Screen** | Estimated cost per analysis, cache status badge |
+| **Study Allocator** | Dev mode indicator if enabled |
+| **Settings** | Complete usage dashboard with cost breakdown |
+
+### 🔐 Privacy Note
+
+- Usage tracking data is stored locally (SharedPreferences)
+- No data sent to external servers
+- Reset anytime from Settings → "Reset Usage Statistics"
+- Cache files contain only your uploaded syllabi responses
+
+### ⚙️ Advanced: Adjust Daily Limit
+
+To modify the daily API call limit programmatically:
+
+```dart
+// In your code
+final usageTracking = UsageTrackingService();
+await usageTracking.setDailyLimit(20); // Set to 20 calls per day
+```
+
+Or edit the default in `lib/services/usage_tracking_service.dart`:
+
+```dart
+static const int defaultDailyLimit = 10; // Change this value
+```
+
+### 📊 Example Monthly Cost Estimate
+
+**Moderate usage scenario:**
+- 30 syllabus analyses per month: **RM 3.60**
+- 50 effort estimations per month: **RM 1.00**
+- **Total: ~RM 5.00/month**
+
+**Heavy usage scenario (beta testing):**
+- 100 syllabus analyses per month: **RM 12.00**
+- 200 effort estimations per month: **RM 4.00**
+- **Total: ~RM 16.00/month**
+
+**TIP**: With Dev Mode + Caching, you can reduce costs by **80-90%** during development!
+
+---
+
 ## 🐛 Troubleshooting
+
 
 ### Common Issues
 

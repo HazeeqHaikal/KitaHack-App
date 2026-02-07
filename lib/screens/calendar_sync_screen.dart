@@ -229,6 +229,207 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
     }
   }
 
+  void _showCreateCalendarDialog() async {
+    final TextEditingController nameController = TextEditingController();
+    final TextEditingController descController = TextEditingController();
+
+    // Suggested calendar names
+    final suggestions = [
+      'University Schedule',
+      'Academic Calendar',
+      'Course Deadlines',
+      'Study Events',
+    ];
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppConstants.backgroundStart,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppConstants.borderRadiusM),
+          side: const BorderSide(color: AppConstants.glassBorder),
+        ),
+        title: Row(
+          children: [
+            Icon(Icons.add_circle, color: AppConstants.primaryColor),
+            const SizedBox(width: AppConstants.spacingS),
+            const Text(
+              'Create New Calendar',
+              style: TextStyle(color: AppConstants.textPrimary),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Quick suggestions:',
+                style: TextStyle(
+                  color: AppConstants.textSecondary,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: AppConstants.spacingS),
+              Wrap(
+                spacing: AppConstants.spacingS,
+                children: suggestions.map((suggestion) {
+                  return ActionChip(
+                    label: Text(suggestion),
+                    labelStyle: const TextStyle(fontSize: 12),
+                    backgroundColor: AppConstants.glassSurface,
+                    side: BorderSide(
+                      color: AppConstants.primaryColor.withOpacity(0.3),
+                    ),
+                    onPressed: () {
+                      nameController.text = suggestion;
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: AppConstants.spacingM),
+              TextField(
+                controller: nameController,
+                style: const TextStyle(color: AppConstants.textPrimary),
+                decoration: InputDecoration(
+                  labelText: 'Calendar Name',
+                  labelStyle: const TextStyle(
+                    color: AppConstants.textSecondary,
+                  ),
+                  hintText: 'e.g., University Schedule',
+                  hintStyle: TextStyle(
+                    color: AppConstants.textSecondary.withOpacity(0.5),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: AppConstants.glassBorder),
+                    borderRadius: BorderRadius.circular(
+                      AppConstants.borderRadiusS,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: AppConstants.primaryColor),
+                    borderRadius: BorderRadius.circular(
+                      AppConstants.borderRadiusS,
+                    ),
+                  ),
+                  filled: true,
+                  fillColor: AppConstants.glassSurface,
+                ),
+                autofocus: true,
+              ),
+              const SizedBox(height: AppConstants.spacingM),
+              TextField(
+                controller: descController,
+                style: const TextStyle(color: AppConstants.textPrimary),
+                decoration: InputDecoration(
+                  labelText: 'Description (Optional)',
+                  labelStyle: const TextStyle(
+                    color: AppConstants.textSecondary,
+                  ),
+                  hintText: 'Calendar for academic events',
+                  hintStyle: TextStyle(
+                    color: AppConstants.textSecondary.withOpacity(0.5),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: AppConstants.glassBorder),
+                    borderRadius: BorderRadius.circular(
+                      AppConstants.borderRadiusS,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: AppConstants.primaryColor),
+                    borderRadius: BorderRadius.circular(
+                      AppConstants.borderRadiusS,
+                    ),
+                  ),
+                  filled: true,
+                  fillColor: AppConstants.glassSurface,
+                ),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              if (nameController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please enter a calendar name'),
+                    backgroundColor: AppConstants.warningColor,
+                  ),
+                );
+                return;
+              }
+              Navigator.of(context).pop({
+                'name': nameController.text.trim(),
+                'description': descController.text.trim(),
+              });
+            },
+            icon: const Icon(Icons.check),
+            label: const Text('Create'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppConstants.primaryColor,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null) {
+      await _createNewCalendar(
+        result['name']!,
+        description: result['description'],
+      );
+    }
+  }
+
+  Future<void> _createNewCalendar(String name, {String? description}) async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final newCalendar = await _calendarService.createCalendar(
+        name,
+        description: description,
+        colorId: '9', // Blue color - looks professional
+      );
+
+      // Reload calendars to include the new one
+      await _loadCalendars();
+
+      // Auto-select the newly created calendar
+      setState(() {
+        _selectedCalendar = newCalendar.id ?? 'primary';
+        _isLoading = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Created calendar: $name'),
+            backgroundColor: AppConstants.successColor,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error creating calendar: $e');
+      setState(() {
+        _isLoading = false;
+      });
+
+      _showError('Failed to create calendar: $e');
+    }
+  }
+
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -651,6 +852,32 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
           )
         else
           ..._calendars.map((calendar) => _buildCalendarOption(calendar)),
+        const SizedBox(height: AppConstants.spacingS),
+        // Create New Calendar Button
+        GlassContainer(
+          onTap: _showCreateCalendarDialog,
+          padding: const EdgeInsets.all(AppConstants.spacingM),
+          color: AppConstants.glassSurface,
+          borderColor: AppConstants.primaryColor.withOpacity(0.5),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.add_circle_outline,
+                color: AppConstants.primaryColor,
+                size: 20,
+              ),
+              const SizedBox(width: AppConstants.spacingS),
+              Text(
+                'Create New Calendar',
+                style: TextStyle(
+                  color: AppConstants.primaryColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }

@@ -15,6 +15,15 @@ class ApiConfig {
   static String get googleClientSecret =>
       dotenv.env['GOOGLE_CLIENT_SECRET'] ?? '';
 
+  // Development Mode Configuration
+  static bool get devMode => dotenv.env['DEV_MODE']?.toLowerCase() == 'true';
+  static bool get enableUsageTracking =>
+      dotenv.env['ENABLE_USAGE_TRACKING']?.toLowerCase() !=
+      'false'; // Default true
+  static bool get enableResponseCache =>
+      dotenv.env['ENABLE_RESPONSE_CACHE']?.toLowerCase() !=
+      'false'; // Default true
+
   // API Configuration
   static const int maxRetries = 3;
   static const Duration timeout = Duration(seconds: 30);
