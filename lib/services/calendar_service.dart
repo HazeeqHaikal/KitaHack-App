@@ -161,11 +161,13 @@ class CalendarService {
   ///
   /// [events] - List of academic events to sync
   /// [calendarId] - Target calendar ID (use 'primary' for main calendar)
+  /// [courseCode] - Optional course code to prepend to event titles
   /// [reminderDays] - Days before event to set reminder
   /// Returns map with successCount and syncedEvents list (with calendar IDs)
   Future<Map<String, dynamic>> syncEvents(
     List<AcademicEvent> events,
     String calendarId, {
+    String? courseCode,
     List<int> reminderDays = const [1],
   }) async {
     if (_calendarApi == null) {
@@ -187,6 +189,7 @@ class CalendarService {
         final calendarEvent = await _syncSingleEvent(
           event,
           calendarId,
+          courseCode,
           reminderDays,
         );
         // Store the Google Calendar event ID in our event
@@ -217,11 +220,17 @@ class CalendarService {
   Future<calendar.Event> _syncSingleEvent(
     AcademicEvent event,
     String calendarId,
+    String? courseCode,
     List<int> reminderDays,
   ) async {
+    // Format title with course code if available
+    final eventTitle = courseCode != null && courseCode.isNotEmpty
+        ? '[$courseCode] ${event.title}'
+        : event.title;
+
     // Convert AcademicEvent to Google Calendar Event
     final calendarEvent = calendar.Event()
-      ..summary = event.title
+      ..summary = eventTitle
       ..description = _buildEventDescription(event)
       ..location = event.location
       ..start = calendar.EventDateTime(

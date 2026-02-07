@@ -109,6 +109,7 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
       final syncResult = await _calendarService.syncEvents(
         events,
         _selectedCalendar,
+        courseCode: _courseInfo?.courseCode,
         reminderDays: reminderDays,
       );
 

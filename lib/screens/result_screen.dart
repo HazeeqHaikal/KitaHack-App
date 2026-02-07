@@ -6,6 +6,7 @@ import 'package:due/widgets/event_card.dart';
 import 'package:due/widgets/custom_buttons.dart';
 import 'package:due/widgets/glass_container.dart';
 import 'package:due/widgets/empty_state.dart';
+import 'package:due/services/storage_service.dart';
 
 class ResultScreen extends StatefulWidget {
   const ResultScreen({super.key});
@@ -15,12 +16,14 @@ class ResultScreen extends StatefulWidget {
 }
 
 class _ResultScreenState extends State<ResultScreen> {
+  final StorageService _storageService = StorageService();
   // Sample extracted events (will be replaced with actual data from Gemini)
   List<AcademicEvent> _events = [];
   CourseInfo? _courseInfo;
   String _filterType = 'all';
   String _sortBy = 'date';
   bool _isLoaded = false;
+  bool _isLoadingCourse = false;
 
   @override
   void didChangeDependencies() {
@@ -31,24 +34,94 @@ class _ResultScreenState extends State<ResultScreen> {
     }
   }
 
-  void _loadData() {
-    // Get CourseInfo from navigation arguments (from Gemini analysis)
+  Future<void> _loadData() async {
+    // Get arguments from navigation
     final args = ModalRoute.of(context)?.settings.arguments;
 
     if (args is CourseInfo) {
-      // Real data from Gemini API
-      _courseInfo = args;
-      _events = List.from(_courseInfo!.events);
-      print('Loaded ${_events.length} events from Gemini analysis');
-    } else {
-      // No data available - shouldn't reach here normally
-      print('Error: No course data provided to result screen');
-      // Navigate back to upload screen
-      Future.microtask(() {
-        if (mounted) {
-          Navigator.pushReplacementNamed(context, '/upload');
-        }
+      // Direct CourseInfo object (from upload screen)
+      setState(() {
+        _courseInfo = args;
+        _events = List.from(_courseInfo!.events);
       });
+      print('Loaded ${_events.length} events from CourseInfo argument');
+    } else if (args is Map<String, dynamic>) {
+      // Map with courseCode (from home screen or course list screen)
+      final courseCode = args['courseCode'] as String?;
+
+      if (courseCode != null) {
+        setState(() {
+          _isLoadingCourse = true;
+        });
+
+        try {
+          // Load course from storage
+          final course = await _storageService.getCourse(courseCode);
+
+          if (course != null) {
+            setState(() {
+              _courseInfo = course;
+              _events = List.from(course.events);
+              _isLoadingCourse = false;
+            });
+            print('Loaded ${_events.length} events for course: $courseCode');
+          } else {
+            // Course not found in storage
+            setState(() {
+              _isLoadingCourse = false;
+            });
+
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Course "$courseCode" not found'),
+                  backgroundColor: AppConstants.errorColor,
+                ),
+              );
+              Navigator.pop(context);
+            }
+          }
+        } catch (e) {
+          print('Error loading course: $e');
+          setState(() {
+            _isLoadingCourse = false;
+          });
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error loading course: $e'),
+                backgroundColor: AppConstants.errorColor,
+              ),
+            );
+            Navigator.pop(context);
+          }
+        }
+      } else {
+        // Invalid arguments
+        print('Error: No courseCode provided in arguments map');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Invalid course data'),
+              backgroundColor: AppConstants.errorColor,
+            ),
+          );
+          Navigator.pop(context);
+        }
+      }
+    } else {
+      // Unknown argument type
+      print('Error: Invalid argument type provided to result screen');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No course data provided'),
+            backgroundColor: AppConstants.errorColor,
+          ),
+        );
+        Navigator.pop(context);
+      }
     }
   }
 
@@ -126,8 +199,24 @@ class _ResultScreenState extends State<ResultScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_courseInfo == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_courseInfo == null || _isLoadingCourse) {
+      return Scaffold(
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                AppConstants.backgroundStart,
+                AppConstants.backgroundEnd,
+              ],
+            ),
+          ),
+          child: const Center(
+            child: CircularProgressIndicator(color: AppConstants.primaryColor),
+          ),
+        ),
+      );
     }
 
     final filtered = filteredEvents;
