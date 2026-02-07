@@ -101,6 +101,12 @@ By automating academic organization, we:
 - ✅ **Google Calendar Sync**: OAuth2 authentication and event creation
 - ✅ **Firebase Storage**: Optional cloud backup of uploaded files
 - ✅ **Environment Configuration**: Secure API key management via .env
+- ✅ **Local Data Persistence**: SharedPreferences storage for courses and events
+- ✅ **Smart Study Allocator**: AI-powered study session planning with real Calendar API integration
+  - Gemini AI estimates study effort based on event type and weightage
+  - Scans Google Calendar using Free/Busy queries to find available time slots
+  - Automatically books "Study Session" blocks in free time leading up to deadlines
+  - Distributes study time intelligently based on deadline proximity and priority
 
 #### User Interface
 - ✅ **Onboarding Screen**: Welcome flow for new users
@@ -127,9 +133,14 @@ By automating academic organization, we:
   - Calendar selection from user's calendars
   - Multiple reminder configuration (1-7 days before)
   - Sync status and error handling
-  - Batch event deletion for cleanup
-- ✅ **Course List Screen**: View all courses with statistics
-- ✅ **Settings Screen**: Account management, preferences, data management
+  - Undo functionality to delete synced events from Google Calendar
+  - Individual event tracking with calendar event IDs
+- ✅ **Course List Screen**: View all courses with statistics loaded from storage
+- ✅ **Settings Screen**: 
+  - Account management and preferences
+  - Data management (clear local courses, clean up old calendar events)
+  - Bulk cleanup for events uploaded before storage fix
+- ✅ **Study Allocator Screen**: AI-powered study session planning with Calendar API
 - ✅ **Profile Management**: Update display name and email via Firebase
 
 #### Design System
@@ -152,16 +163,6 @@ By automating academic organization, we:
 ### 🎨 Phase 2 - UI Implemented (Mock Functionality)
 
 These features have **complete UI implementations** but currently use mock data instead of live AI/API integration:
-
-- 🎨 **Smart Study Allocator** - Time Blocking (487 lines)
-  - **Concept**: A deadline is a point in time, but studying takes duration. This feature finds empty slots in the user's calendar and books "Study Sessions" automatically.
-  - **UI Status**: Complete study session planning interface implemented
-  - **Current**: Generates mock study blocks with simulated time allocation
-  - **Future Implementation**: 
-    - Gemini AI estimates study effort (e.g., "Physics exam = 6 hours study")
-    - Scans user's Google Calendar using Calendar API (Free/Busy queries)
-    - Auto-books "Study Blocks" in free time slots leading up to exam
-    - Distributes study sessions intelligently based on deadline proximity
 
 - 🎨 **Task Breakdown Screen** (547 lines)
   - UI: Complete task management and breakdown interface
@@ -330,9 +331,10 @@ due/
 │   │   ├── task_breakdown_screen.dart  # Task management (UI complete, mock data)
 │   │   └── resource_finder_screen.dart # Resource search (UI complete, mock data)
 │   ├── services/
-│   │   ├── gemini_service.dart        # Gemini 2.5 Pro API integration
+│   │   ├── gemini_service.dart        # Gemini 2.5 Pro API integration (effort estimation)
 │   │   ├── firebase_service.dart      # Firebase Storage + Auth
-│   │   ├── calendar_service.dart      # Google Calendar API + OAuth
+│   │   ├── calendar_service.dart      # Google Calendar API + OAuth + Free/Busy queries
+│   │   ├── storage_service.dart       # Local data persistence with SharedPreferences
 │   │   └── mock_data_service.dart     # Test data (4 sample courses, 442 lines)
 │   ├── models/
 │   │   ├── academic_event.dart        # Event data model
@@ -512,28 +514,41 @@ flutter analyze
 - [x] Priority-based color coding
 - [x] Guest mode (anonymous authentication)
 - [x] Profile management
-- [x] Batch event deletion
 - [x] Environment configuration
 - [x] Error handling and retry logic
 - [x] Release APK build (50.1MB)
 - [x] Mock data service for testing
-- [x] Phase 2/3 UI mockups (study allocator, task breakdown, resource finder)
+- [x] Phase 2/3 UI mockups (task breakdown, resource finder)
+- [x] **Smart Study Allocator (Phase 2 Complete)**:
+  - [x] Gemini AI effort estimation based on event type and weightage
+  - [x] Google Calendar Free/Busy API queries
+  - [x] Intelligent time slot finding algorithm
+  - [x] Automatic study session booking to calendar
+- [x] **Local Data Persistence**:
+  - [x] SharedPreferences storage service
+  - [x] Course and event saving/loading
+  - [x] Home dashboard statistics from storage
+  - [x] Course list screen with storage integration
+- [x] **Calendar Event Management**:
+  - [x] Undo sync functionality (delete from calendar)
+  - [x] Event tracking with calendar IDs
+  - [x] Bulk cleanup for old untracked events
+  - [x] Settings screen data management options
 
 ### 🎨 UI Complete (Mock Functionality)
-- [x] Study session allocator UI
 - [x] Task breakdown interface UI
 - [x] Resource finder UI
 - [ ] Connect to live AI/API backends
 
 ### 🔄 Future Development
 - [ ] Group sync with course codes
-- [ ] Live study session generation
-- [ ] AI-powered task breakdown
-- [ ] Real resource search APIs
+- [ ] AI-powered task breakdown (UI complete)
+- [ ] Real resource search APIs (UI complete)
 - [ ] Smart notifications
 - [ ] Analytics dashboard
 - [ ] Comprehensive test suite
 - [ ] Camera capture for syllabi
+- [ ] iOS platform support
 
 ### ⚠️ Known Issues (Non-Critical)
 - Debug print statements throughout codebase (normal for development)
@@ -543,8 +558,9 @@ flutter analyze
 - Production signing keys not configured (Play Store requirement)
 
 ### 🚀 Roadmap
-- [ ] **Q1 2026**: Beta testing with university students
-- [ ] **Q2 2026**: Complete Phase 2 AI features (study allocator, task breakdown)
+- [ ] **Q1 2026**: Beta testing with university students ✅ Currently in February 2026
+- [x] **Phase 2 Study Allocator**: Completed with real AI/Calendar API integration
+- [ ] **Q2 2026**: Complete remaining Phase 2 features (task breakdown, resource finder)
 - [ ] **Q3 2026**: Group sync and course code sharing
 - [ ] **Q4 2026**: Analytics dashboard and progress tracking
 

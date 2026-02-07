@@ -64,7 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     color: AppConstants.primaryColor,
                   ),
                   const SizedBox(height: 24),
-                  
+
                   // App Title
                   Text(
                     'DUE',
@@ -97,9 +97,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             'Welcome',
                             style: Theme.of(context).textTheme.headlineMedium
                                 ?.copyWith(
-                              color: AppConstants.textPrimary,
-                              fontWeight: FontWeight.bold,
-                            ),
+                                  color: AppConstants.textPrimary,
+                                  fontWeight: FontWeight.bold,
+                                ),
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: AppConstants.spacingS),
@@ -141,15 +141,15 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                           const SizedBox(height: AppConstants.spacingM),
-                          
+
                           // Info text
                           Text(
                             'Google Calendar access will be requested to sync your academic events',
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(
-                              color: AppConstants.textSecondary,
-                              fontSize: 12,
-                            ),
+                                  color: AppConstants.textSecondary,
+                                  fontSize: 12,
+                                ),
                             textAlign: TextAlign.center,
                           ),
                         ],

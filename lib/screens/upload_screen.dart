@@ -7,6 +7,7 @@ import 'package:due/widgets/info_banner.dart';
 import 'package:due/widgets/glass_container.dart';
 import 'package:due/services/gemini_service.dart';
 import 'package:due/services/firebase_service.dart';
+import 'package:due/services/storage_service.dart';
 
 class UploadScreen extends StatefulWidget {
   const UploadScreen({super.key});
@@ -27,6 +28,7 @@ class _UploadScreenState extends State<UploadScreen>
 
   final _geminiService = GeminiService();
   final _firebaseService = FirebaseService();
+  final _storageService = StorageService();
 
   @override
   void initState() {
@@ -143,12 +145,30 @@ class _UploadScreenState extends State<UploadScreen>
 
       final courseInfo = await _geminiService.analyzeSyllabus(_selectedFile!);
 
+      // Save the course data to local storage
+      setState(() {
+        _processingStatus = 'Saving course data...';
+      });
+
+      await _storageService.saveCourse(courseInfo);
+
       if (!mounted) return;
 
       setState(() {
         _isProcessing = false;
         _processingStatus = '';
       });
+
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '✅ Successfully added ${courseInfo.courseName} with ${courseInfo.events.length} events!',
+          ),
+          backgroundColor: AppConstants.successColor,
+          duration: const Duration(seconds: 3),
+        ),
+      );
 
       // Navigate to result screen with parsed data
       Navigator.pushNamed(context, '/result', arguments: courseInfo);

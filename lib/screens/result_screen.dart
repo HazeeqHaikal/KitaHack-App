@@ -91,7 +91,10 @@ class _ResultScreenState extends State<ResultScreen> {
     Navigator.pushNamed(
       context,
       '/calendar-sync',
-      arguments: {'events': _events.where((e) => e.isSelected).toList()},
+      arguments: {
+        'events': _events.where((e) => e.isSelected).toList(),
+        'courseInfo': _courseInfo,
+      },
     );
   }
 

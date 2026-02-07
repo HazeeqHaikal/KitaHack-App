@@ -2,15 +2,47 @@ import 'package:flutter/material.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/widgets/glass_container.dart';
 import 'package:due/models/course_info.dart';
+import 'package:due/services/storage_service.dart';
 
-class CourseListScreen extends StatelessWidget {
+class CourseListScreen extends StatefulWidget {
   const CourseListScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // No mock data - show empty state
-    final courses = <CourseInfo>[];
+  State<CourseListScreen> createState() => _CourseListScreenState();
+}
 
+class _CourseListScreenState extends State<CourseListScreen> {
+  final StorageService _storageService = StorageService();
+  List<CourseInfo> _courses = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCourses();
+  }
+
+  Future<void> _loadCourses() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final courses = await _storageService.getAllCourses();
+      setState(() {
+        _courses = courses;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading courses: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -28,13 +60,80 @@ class CourseListScreen extends StatelessWidget {
           ),
         ),
         child: SafeArea(
-          child: ListView.builder(
-            padding: const EdgeInsets.all(AppConstants.spacingL),
-            itemCount: courses.length,
-            itemBuilder: (context, index) {
-              final course = courses[index];
-              return _buildCourseCard(context, course);
-            },
+          child: _isLoading
+              ? const Center(
+                  child: CircularProgressIndicator(
+                    color: AppConstants.secondaryColor,
+                  ),
+                )
+              : _courses.isEmpty
+              ? _buildEmptyState()
+              : ListView.builder(
+                  padding: const EdgeInsets.all(AppConstants.spacingL),
+                  itemCount: _courses.length,
+                  itemBuilder: (context, index) {
+                    final course = _courses[index];
+                    return _buildCourseCard(context, course);
+                  },
+                ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppConstants.spacingXL),
+        child: GlassContainer(
+          padding: const EdgeInsets.all(AppConstants.spacingXL),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.school_outlined,
+                size: 80,
+                color: AppConstants.textSecondary,
+              ),
+              const SizedBox(height: AppConstants.spacingL),
+              const Text(
+                'No Courses Yet',
+                style: TextStyle(
+                  color: AppConstants.textPrimary,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: AppConstants.spacingM),
+              const Text(
+                'Start by uploading a course syllabus to automatically extract deadlines and events.',
+                style: TextStyle(
+                  color: AppConstants.textSecondary,
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: AppConstants.spacingXL),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pushNamed(context, '/upload');
+                },
+                icon: const Icon(Icons.upload_file),
+                label: const Text('Upload Syllabus'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppConstants.primaryColor,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppConstants.spacingL * 2,
+                    vertical: AppConstants.spacingM,
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

@@ -14,7 +14,6 @@ class CalendarService {
 
   calendar.CalendarApi? _calendarApi;
 
-
   /// Initialize Calendar service (no longer needs separate initialization)
   void initialize() {
     print('CalendarService initialized');
@@ -113,8 +112,8 @@ class CalendarService {
   /// [events] - List of academic events to sync
   /// [calendarId] - Target calendar ID (use 'primary' for main calendar)
   /// [reminderDays] - Days before event to set reminder
-  /// Returns number of successfully synced events
-  Future<int> syncEvents(
+  /// Returns map with successCount and syncedEvents list (with calendar IDs)
+  Future<Map<String, dynamic>> syncEvents(
     List<AcademicEvent> events,
     String calendarId, {
     List<int> reminderDays = const [1],
@@ -129,14 +128,22 @@ class CalendarService {
 
     int successCount = 0;
     final errors = <String>[];
+    final syncedEvents = <AcademicEvent>[];
 
     print('Syncing ${events.length} events to calendar: $calendarId');
 
     for (final event in events) {
       try {
-        await _syncSingleEvent(event, calendarId, reminderDays);
+        final calendarEvent = await _syncSingleEvent(
+          event,
+          calendarId,
+          reminderDays,
+        );
+        // Store the Google Calendar event ID in our event
+        event.calendarEventId = calendarEvent.id;
+        syncedEvents.add(event);
         successCount++;
-        print('Synced: ${event.title}');
+        print('Synced: ${event.title} (ID: ${calendarEvent.id})');
       } catch (e) {
         errors.add('${event.title}: $e');
         print('Failed to sync ${event.title}: $e');
@@ -149,7 +156,11 @@ class CalendarService {
       print('Errors: ${errors.join(", ")}');
     }
 
-    return successCount;
+    return {
+      'successCount': successCount,
+      'syncedEvents': syncedEvents,
+      'calendarId': calendarId,
+    };
   }
 
   /// Sync a single event to Google Calendar
@@ -224,6 +235,33 @@ class CalendarService {
     }
   }
 
+  /// Delete specific events from Google Calendar by their IDs
+  Future<int> deleteEventsFromCalendar(
+    List<AcademicEvent> events,
+    String calendarId,
+  ) async {
+    if (_calendarApi == null) {
+      throw Exception('Not authenticated');
+    }
+
+    int deleteCount = 0;
+    for (final event in events) {
+      if (event.calendarEventId != null) {
+        try {
+          await _calendarApi!.events.delete(calendarId, event.calendarEventId!);
+          event.calendarEventId = null; // Clear the ID after deletion
+          deleteCount++;
+          print('Deleted event: ${event.title}');
+        } catch (e) {
+          print('Failed to delete event ${event.title}: $e');
+        }
+      }
+    }
+
+    print('Deleted $deleteCount events from calendar');
+    return deleteCount;
+  }
+
   /// Delete all events created by Due from a calendar
   /// (For cleanup/re-sync purposes)
   Future<int> deleteAllDueEvents(String calendarId) async {
@@ -258,6 +296,209 @@ class CalendarService {
       print('Error deleting events: $e');
       rethrow;
     }
+  }
+
+  /// Query free/busy time slots in user's calendar
+  /// Returns list of busy time ranges
+  Future<List<Map<String, DateTime>>> getFreeBusySlots(
+    String calendarId,
+    DateTime startTime,
+    DateTime endTime,
+  ) async {
+    if (_calendarApi == null) {
+      throw Exception('Not authenticated');
+    }
+
+    try {
+      print('Querying free/busy from $startTime to $endTime');
+
+      // Create freebusy query
+      final request = calendar.FreeBusyRequest(
+        timeMin: startTime,
+        timeMax: endTime,
+        items: [calendar.FreeBusyRequestItem(id: calendarId)],
+      );
+
+      final response = await _calendarApi!.freebusy.query(request);
+
+      // Extract busy periods
+      final busyTimes = <Map<String, DateTime>>[];
+      final calendarBusy = response.calendars?[calendarId]?.busy ?? [];
+
+      for (final busyPeriod in calendarBusy) {
+        if (busyPeriod.start != null && busyPeriod.end != null) {
+          busyTimes.add({'start': busyPeriod.start!, 'end': busyPeriod.end!});
+        }
+      }
+
+      print('Found ${busyTimes.length} busy periods');
+      return busyTimes;
+    } catch (e) {
+      print('Error querying free/busy: $e');
+      rethrow;
+    }
+  }
+
+  /// Find available time slots for study sessions
+  /// Returns list of suggested time slots
+  Future<List<Map<String, dynamic>>> findStudySlots({
+    required String calendarId,
+    required int totalHours,
+    required int sessionsCount,
+    required DateTime startDate,
+    required DateTime deadlineDate,
+    List<int> preferredHours = const [9, 10, 14, 15, 16, 19, 20],
+    int minSessionHours = 2,
+    int maxSessionHours = 4,
+  }) async {
+    try {
+      print('Finding $sessionsCount study slots for $totalHours hours total');
+
+      // Get busy times for the period
+      final busyTimes = await getFreeBusySlots(
+        calendarId,
+        startDate,
+        deadlineDate,
+      );
+
+      final hoursPerSession = (totalHours / sessionsCount).ceil().clamp(
+        minSessionHours,
+        maxSessionHours,
+      );
+
+      final studySlots = <Map<String, dynamic>>[];
+      var currentDate = startDate;
+      var sessionsFound = 0;
+
+      // Try to find slots, spreading them across available days
+      while (sessionsFound < sessionsCount &&
+          currentDate.isBefore(
+            deadlineDate.subtract(const Duration(days: 1)),
+          )) {
+        // Skip weekends for now (can be made configurable)
+        if (currentDate.weekday == DateTime.saturday ||
+            currentDate.weekday == DateTime.sunday) {
+          currentDate = currentDate.add(const Duration(days: 1));
+          continue;
+        }
+
+        // Try each preferred hour
+        for (final hour in preferredHours) {
+          final slotStart = DateTime(
+            currentDate.year,
+            currentDate.month,
+            currentDate.day,
+            hour,
+            0,
+          );
+          final slotEnd = slotStart.add(Duration(hours: hoursPerSession));
+
+          // Check if this slot conflicts with busy times
+          if (!_isSlotBusy(slotStart, slotEnd, busyTimes)) {
+            studySlots.add({
+              'start': slotStart,
+              'end': slotEnd,
+              'duration': hoursPerSession,
+            });
+            sessionsFound++;
+
+            // Move to next day after finding a slot
+            break;
+          }
+        }
+
+        // Move to next day
+        currentDate = currentDate.add(const Duration(days: 1));
+      }
+
+      print('Found ${studySlots.length} available study slots');
+      return studySlots;
+    } catch (e) {
+      print('Error finding study slots: $e');
+      rethrow;
+    }
+  }
+
+  /// Check if a time slot conflicts with busy periods
+  bool _isSlotBusy(
+    DateTime slotStart,
+    DateTime slotEnd,
+    List<Map<String, DateTime>> busyTimes,
+  ) {
+    for (final busy in busyTimes) {
+      final busyStart = busy['start']!;
+      final busyEnd = busy['end']!;
+
+      // Check for overlap
+      if (slotStart.isBefore(busyEnd) && slotEnd.isAfter(busyStart)) {
+        return true; // Conflict found
+      }
+    }
+    return false; // No conflict
+  }
+
+  /// Create study session events in calendar
+  /// Returns number of successfully created sessions
+  Future<int> createStudySessions({
+    required String calendarId,
+    required List<Map<String, dynamic>> studySlots,
+    required String eventTitle,
+    required String eventId,
+    String phase = 'Study Session',
+  }) async {
+    if (_calendarApi == null) {
+      throw Exception('Not authenticated');
+    }
+
+    int successCount = 0;
+
+    for (int i = 0; i < studySlots.length; i++) {
+      try {
+        final slot = studySlots[i];
+        final sessionNumber = i + 1;
+
+        final calendarEvent = calendar.Event()
+          ..summary = '📚 $phase ${sessionNumber}: $eventTitle'
+          ..description =
+              '''
+Study session automatically scheduled by Due.
+
+Related Event: $eventTitle
+Session: $sessionNumber of ${studySlots.length}
+Duration: ${slot['duration']} hours
+
+Focus on preparation and understanding the material.
+Take breaks every 45-60 minutes for optimal retention.
+
+Created by Due - Your Academic Timeline, Automated'''
+          ..start = calendar.EventDateTime(
+            dateTime: slot['start'],
+            timeZone: 'America/New_York', // TODO: Make configurable
+          )
+          ..end = calendar.EventDateTime(
+            dateTime: slot['end'],
+            timeZone: 'America/New_York',
+          )
+          ..colorId =
+              '7' // Peacock blue for study sessions
+          ..reminders = calendar.EventReminders(
+            useDefault: false,
+            overrides: [
+              calendar.EventReminder(method: 'popup', minutes: 30),
+              calendar.EventReminder(method: 'popup', minutes: 1440), // 1 day
+            ],
+          );
+
+        await _calendarApi!.events.insert(calendarEvent, calendarId);
+        successCount++;
+        print('Created study session $sessionNumber');
+      } catch (e) {
+        print('Failed to create study session ${i + 1}: $e');
+      }
+    }
+
+    print('Successfully created $successCount study sessions');
+    return successCount;
   }
 }
 

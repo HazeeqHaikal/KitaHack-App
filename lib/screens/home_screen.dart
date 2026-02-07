@@ -5,16 +5,59 @@ import 'package:due/widgets/glass_container.dart';
 import 'package:due/models/course_info.dart';
 import 'package:due/models/academic_event.dart';
 import 'package:due/utils/date_formatter.dart';
+import 'package:due/services/storage_service.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // No mock data - show empty state prompting user to upload
-    final courses = <CourseInfo>[];
-    final upcomingEvents = <AcademicEvent>[];
+  State<HomeScreen> createState() => _HomeScreenState();
+}
 
+class _HomeScreenState extends State<HomeScreen> {
+  final StorageService _storageService = StorageService();
+  List<CourseInfo> _courses = [];
+  List<Map<String, dynamic>> _upcomingEvents = [];
+  Map<String, int> _statistics = {
+    'totalCourses': 0,
+    'totalEvents': 0,
+    'weeklyEvents': 0,
+    'highPriorityEvents': 0,
+  };
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final courses = await _storageService.getAllCourses();
+      final upcomingEvents = await _storageService.getUpcomingEvents(limit: 5);
+      final statistics = await _storageService.getStatistics();
+
+      setState(() {
+        _courses = courses;
+        _upcomingEvents = upcomingEvents;
+        _statistics = statistics;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading data: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       // Ensure the background gradient covers the entire scaffold
       body: Container(
@@ -99,59 +142,76 @@ class HomeScreen extends StatelessWidget {
 
               // Main content
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(AppConstants.spacingL),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Stats overview
-                      _buildStatsGrid(context, courses, upcomingEvents),
-                      const SizedBox(height: AppConstants.spacingXL),
-                      // Upcoming deadlines section
-                      _buildSectionHeader(
-                        context,
-                        'Upcoming Deadlines',
-                        Icons.event,
-                      ),
-                      const SizedBox(height: AppConstants.spacingM),
-                      _buildUpcomingEvents(context, upcomingEvents),
-                      const SizedBox(height: AppConstants.spacingXL),
-                      // Your courses section
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _buildSectionHeader(
-                            context,
-                            'Your Courses',
-                            Icons.school,
-                          ),
-                          TextButton.icon(
-                            onPressed: () {
-                              Navigator.pushNamed(context, '/courses');
-                            },
-                            icon: const Icon(
-                              Icons.arrow_forward,
-                              size: 16,
-                              color: AppConstants.primaryColor,
-                            ),
-                            label: const Text(
-                              'View All',
-                              style: TextStyle(
-                                color: AppConstants.primaryColor,
-                                fontWeight: FontWeight.w600,
+                child: _isLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                          color: AppConstants.secondaryColor,
+                        ),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: _loadData,
+                        color: AppConstants.secondaryColor,
+                        child: SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.all(AppConstants.spacingL),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // Stats overview
+                              _buildStatsGrid(context),
+                              const SizedBox(height: AppConstants.spacingXL),
+                              // Upcoming deadlines section
+                              _buildSectionHeader(
+                                context,
+                                'Upcoming Deadlines',
+                                Icons.event,
                               ),
-                            ),
+                              const SizedBox(height: AppConstants.spacingM),
+                              _buildUpcomingEvents(context),
+                              const SizedBox(height: AppConstants.spacingXL),
+                              // Your courses section
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  _buildSectionHeader(
+                                    context,
+                                    'Your Courses',
+                                    Icons.school,
+                                  ),
+                                  TextButton.icon(
+                                    onPressed: () async {
+                                      await Navigator.pushNamed(
+                                        context,
+                                        '/courses',
+                                      );
+                                      // Reload data when returning
+                                      _loadData();
+                                    },
+                                    icon: const Icon(
+                                      Icons.arrow_forward,
+                                      size: 16,
+                                      color: AppConstants.primaryColor,
+                                    ),
+                                    label: const Text(
+                                      'View All',
+                                      style: TextStyle(
+                                        color: AppConstants.primaryColor,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: AppConstants.spacingM),
+                              _buildCoursesList(context),
+                              const SizedBox(height: AppConstants.spacingXL),
+                              // Quick actions
+                              _buildActionButtons(context),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
-                      const SizedBox(height: AppConstants.spacingM),
-                      _buildCoursesList(context, courses),
-                      const SizedBox(height: AppConstants.spacingXL),
-                      // Quick actions
-                      _buildActionButtons(context),
-                    ],
-                  ),
-                ),
               ),
             ],
           ),
@@ -160,29 +220,7 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStatsGrid(
-    BuildContext context,
-    List<CourseInfo> courses,
-    List<AcademicEvent> upcomingEvents,
-  ) {
-    // Calculate stats from actual data
-    final totalCourses = courses.length;
-    final totalEvents = courses.fold<int>(
-      0,
-      (sum, course) => sum + course.events.length,
-    );
-
-    final now = DateTime.now();
-    final oneWeekFromNow = now.add(const Duration(days: 7));
-    final upcomingThisWeek = upcomingEvents.where((event) {
-      return event.dueDate.isAfter(now) &&
-          event.dueDate.isBefore(oneWeekFromNow);
-    }).length;
-
-    final highPriorityEvents = upcomingEvents.where((event) {
-      return event.priority == EventPriority.high;
-    }).length;
-
+  Widget _buildStatsGrid(BuildContext context) {
     return GridView.count(
       crossAxisCount: 2,
       shrinkWrap: true,
@@ -195,28 +233,28 @@ class HomeScreen extends StatelessWidget {
           context,
           icon: Icons.library_books,
           label: 'Active Courses',
-          value: totalCourses.toString(),
+          value: _statistics['totalCourses'].toString(),
           color: AppConstants.primaryColor,
         ),
         _buildStatCard(
           context,
           icon: Icons.event_note,
           label: 'Total Events',
-          value: totalEvents.toString(),
+          value: _statistics['totalEvents'].toString(),
           color: AppConstants.secondaryColor,
         ),
         _buildStatCard(
           context,
           icon: Icons.alarm,
           label: 'This Week',
-          value: upcomingThisWeek.toString(),
+          value: _statistics['weeklyEvents'].toString(),
           color: AppConstants.warningColor,
         ),
         _buildStatCard(
           context,
           icon: Icons.priority_high,
           label: 'High Priority',
-          value: highPriorityEvents.toString(),
+          value: _statistics['highPriorityEvents'].toString(),
           color: AppConstants.errorColor,
         ),
       ],
@@ -292,38 +330,55 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildUpcomingEvents(
-    BuildContext context,
-    List<AcademicEvent> events,
-  ) {
-    if (events.isEmpty) {
+  Widget _buildUpcomingEvents(BuildContext context) {
+    if (_upcomingEvents.isEmpty) {
       return GlassContainer(
         padding: const EdgeInsets.all(AppConstants.spacingL),
-        child: Center(
-          child: Column(
-            children: [
-              Icon(
-                Icons.check_circle_outline,
-                size: 48,
-                color: AppConstants.successColor.withOpacity(0.5),
+        child: const Column(
+          children: [
+            Icon(
+              Icons.event_available,
+              size: 48,
+              color: AppConstants.textSecondary,
+            ),
+            SizedBox(height: AppConstants.spacingM),
+            Text(
+              'No upcoming events',
+              style: TextStyle(
+                color: AppConstants.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
               ),
-              const SizedBox(height: AppConstants.spacingM),
-              const Text(
-                'No upcoming deadlines',
-                style: TextStyle(color: AppConstants.textSecondary),
-              ),
-            ],
-          ),
+            ),
+            SizedBox(height: AppConstants.spacingS),
+            Text(
+              'Upload a syllabus to get started',
+              style: TextStyle(color: AppConstants.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       );
     }
 
     return Column(
-      children: events.map((event) => _buildEventItem(context, event)).toList(),
+      children: _upcomingEvents
+          .map(
+            (eventData) => _buildEventItem(
+              context,
+              eventData['event'] as AcademicEvent,
+              eventData['courseName'] as String,
+            ),
+          )
+          .toList(),
     );
   }
 
-  Widget _buildEventItem(BuildContext context, AcademicEvent event) {
+  Widget _buildEventItem(
+    BuildContext context,
+    AcademicEvent event,
+    String courseName,
+  ) {
     final daysUntil = event.daysUntilDue;
     final urgencyColor = daysUntil <= 3
         ? AppConstants.errorColor
@@ -415,17 +470,32 @@ class HomeScreen extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    daysUntil == 0
-                        ? 'Due today!'
-                        : daysUntil == 1
-                        ? 'Due tomorrow'
-                        : 'Due in $daysUntil days',
-                    style: TextStyle(
-                      color: urgencyColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        courseName,
+                        style: const TextStyle(
+                          color: AppConstants.textSecondary,
+                          fontSize: 11,
+                        ),
+                      ),
+                      const Text(
+                        ' • ',
+                        style: TextStyle(color: AppConstants.textSecondary),
+                      ),
+                      Text(
+                        daysUntil == 0
+                            ? 'Due today!'
+                            : daysUntil == 1
+                            ? 'Due tomorrow'
+                            : 'Due in $daysUntil days',
+                        style: TextStyle(
+                          color: urgencyColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -436,9 +506,55 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildCoursesList(BuildContext context, List<CourseInfo> courses) {
+  Widget _buildCoursesList(BuildContext context) {
+    if (_courses.isEmpty) {
+      return GlassContainer(
+        padding: const EdgeInsets.all(AppConstants.spacingL),
+        child: Column(
+          children: [
+            const Icon(
+              Icons.school_outlined,
+              size: 48,
+              color: AppConstants.textSecondary,
+            ),
+            const SizedBox(height: AppConstants.spacingM),
+            const Text(
+              'No courses yet',
+              style: TextStyle(
+                color: AppConstants.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: AppConstants.spacingS),
+            const Text(
+              'Upload your first syllabus to begin',
+              style: TextStyle(color: AppConstants.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppConstants.spacingM),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pushNamed(context, '/upload');
+              },
+              icon: const Icon(Icons.upload_outlined),
+              label: const Text('Upload Syllabus'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppConstants.primaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppConstants.spacingL,
+                  vertical: AppConstants.spacingM,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Column(
-      children: courses
+      children: _courses
           .map((course) => _buildCourseCard(context, course))
           .toList(),
     );

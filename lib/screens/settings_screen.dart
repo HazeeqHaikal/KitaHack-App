@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/widgets/glass_container.dart';
 import 'package:due/services/firebase_service.dart';
+import 'package:due/services/storage_service.dart';
+import 'package:due/services/calendar_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -12,6 +14,8 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final _firebaseService = FirebaseService();
+  final _storageService = StorageService();
+  final _calendarService = CalendarService();
 
   String get _userEmail {
     final user = _firebaseService.currentUser;
@@ -53,6 +57,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: 'Account',
                   subtitle: _userEmail,
                   onTap: null,
+                ),
+                const SizedBox(height: AppConstants.spacingL),
+                _buildSectionTitle('Data Management'),
+                _buildSettingItem(
+                  context,
+                  icon: Icons.delete_sweep,
+                  title: 'Clear All Courses',
+                  subtitle: 'Remove all saved courses from this device',
+                  onTap: () => _showClearDataDialog(context),
+                ),
+                _buildSettingItem(
+                  context,
+                  icon: Icons.event_busy,
+                  title: 'Clean Up Calendar',
+                  subtitle: 'Delete old Due events from Google Calendar',
+                  onTap: () => _showCleanupCalendarDialog(context),
                 ),
                 const SizedBox(height: AppConstants.spacingL),
               ],
@@ -229,6 +249,189 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
             child: const Text(
               'Sign Out',
+              style: TextStyle(color: AppConstants.errorColor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showClearDataDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppConstants.backgroundEnd,
+        title: const Text(
+          'Clear All Courses?',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'This will permanently delete all saved courses and events from this device. This action cannot be undone.',
+          style: TextStyle(color: AppConstants.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppConstants.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+
+              // Show loading indicator
+              if (!context.mounted) return;
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => const Center(
+                  child: CircularProgressIndicator(
+                    color: AppConstants.primaryColor,
+                  ),
+                ),
+              );
+
+              try {
+                await _storageService.clearAllCourses();
+
+                if (!context.mounted) return;
+                Navigator.pop(context); // Dismiss loading
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✅ All courses cleared successfully'),
+                    backgroundColor: AppConstants.successColor,
+                  ),
+                );
+
+                // Go back to home
+                Navigator.pop(context);
+              } catch (e) {
+                if (!context.mounted) return;
+                Navigator.pop(context); // Dismiss loading
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to clear data: $e'),
+                    backgroundColor: AppConstants.errorColor,
+                  ),
+                );
+              }
+            },
+            child: const Text(
+              'Clear All',
+              style: TextStyle(color: AppConstants.errorColor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCleanupCalendarDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppConstants.backgroundEnd,
+        title: const Text(
+          'Clean Up Google Calendar?',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'This will search for and delete all events created by Due from your Google Calendar (including old untracked events). This is useful for cleaning up events uploaded before the storage fix.',
+          style: TextStyle(color: AppConstants.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppConstants.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+
+              // Check if authenticated
+              if (!_calendarService.isAuthenticated) {
+                try {
+                  await _calendarService.signIn();
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Failed to sign in: $e'),
+                      backgroundColor: AppConstants.errorColor,
+                    ),
+                  );
+                  return;
+                }
+              }
+
+              // Show loading indicator
+              if (!context.mounted) return;
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(
+                        color: AppConstants.primaryColor,
+                      ),
+                      SizedBox(height: 16),
+                      Text(
+                        'Searching for Due events...',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+
+              try {
+                // Get user's calendars and use primary
+                final calendars = await _calendarService.getCalendars();
+                final primaryCalendar = calendars.firstWhere(
+                  (cal) => cal.primary == true,
+                  orElse: () => calendars.first,
+                );
+
+                final deleteCount = await _calendarService.deleteAllDueEvents(
+                  primaryCalendar.id!,
+                );
+
+                if (!context.mounted) return;
+                Navigator.pop(context); // Dismiss loading
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      '✅ Deleted $deleteCount events from Google Calendar',
+                    ),
+                    backgroundColor: AppConstants.successColor,
+                    duration: const Duration(seconds: 4),
+                  ),
+                );
+              } catch (e) {
+                if (!context.mounted) return;
+                Navigator.pop(context); // Dismiss loading
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to clean up calendar: $e'),
+                    backgroundColor: AppConstants.errorColor,
+                  ),
+                );
+              }
+            },
+            child: const Text(
+              'Clean Up',
               style: TextStyle(color: AppConstants.errorColor),
             ),
           ),

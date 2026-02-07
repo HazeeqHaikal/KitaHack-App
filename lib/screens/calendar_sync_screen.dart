@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:due/models/academic_event.dart';
+import 'package:due/models/course_info.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/widgets/custom_buttons.dart';
 import 'package:due/widgets/info_banner.dart';
 import 'package:due/widgets/glass_container.dart';
 import 'package:due/services/calendar_service.dart';
+import 'package:due/services/storage_service.dart';
 import 'package:googleapis/calendar/v3.dart' as calendar;
 
 class CalendarSyncScreen extends StatefulWidget {
@@ -22,7 +24,11 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
   bool _isLoading = true;
 
   final _calendarService = CalendarService();
+  final _storageService = StorageService();
   List<calendar.CalendarListEntry> _calendars = [];
+  List<AcademicEvent>? _lastSyncedEvents;
+  String? _lastSyncedCalendarId;
+  CourseInfo? _courseInfo;
 
   @override
   void initState() {
@@ -81,6 +87,7 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
     final args =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final events = args?['events'] as List<AcademicEvent>?;
+    _courseInfo = args?['courseInfo'] as CourseInfo?;
 
     if (events == null || events.isEmpty) {
       _showError('No events to sync');
@@ -99,18 +106,31 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
     try {
       final reminderDays = _addReminders ? _reminderDays : <int>[];
 
-      final syncedCount = await _calendarService.syncEvents(
+      final syncResult = await _calendarService.syncEvents(
         events,
         _selectedCalendar,
         reminderDays: reminderDays,
       );
+
+      final syncedCount = syncResult['successCount'] as int;
+      final syncedEvents = syncResult['syncedEvents'] as List<AcademicEvent>;
+      final calendarId = syncResult['calendarId'] as String;
+
+      // Save the synced events with their calendar IDs
+      _lastSyncedEvents = syncedEvents;
+      _lastSyncedCalendarId = calendarId;
+
+      // Update the course info with the calendar event IDs
+      if (_courseInfo != null) {
+        await _storageService.saveCourse(_courseInfo!);
+      }
 
       if (mounted) {
         setState(() {
           _isSyncing = false;
         });
 
-        // Show success dialog
+        // Show success dialog with undo option
         _showSuccessDialog(syncedCount, events.length);
       }
     } catch (e) {
@@ -123,6 +143,89 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
 
         _showError('Failed to sync events: $e');
       }
+    }
+  }
+
+  Future<void> _undoSync() async {
+    if (_lastSyncedEvents == null ||
+        _lastSyncedEvents!.isEmpty ||
+        _lastSyncedCalendarId == null) {
+      _showError('No events to undo');
+      return;
+    }
+
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppConstants.backgroundStart,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppConstants.borderRadiusM),
+          side: const BorderSide(color: AppConstants.glassBorder),
+        ),
+        title: const Text(
+          'Delete from Calendar?',
+          style: TextStyle(color: AppConstants.textPrimary),
+        ),
+        content: Text(
+          'This will remove ${_lastSyncedEvents!.length} events from your Google Calendar. This action cannot be undone.',
+          style: const TextStyle(color: AppConstants.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppConstants.errorColor,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() {
+      _isSyncing = true;
+    });
+
+    try {
+      final deleteCount = await _calendarService.deleteEventsFromCalendar(
+        _lastSyncedEvents!,
+        _lastSyncedCalendarId!,
+      );
+
+      // Update the course info to remove calendar event IDs
+      if (_courseInfo != null) {
+        await _storageService.saveCourse(_courseInfo!);
+      }
+
+      setState(() {
+        _isSyncing = false;
+        _lastSyncedEvents = null;
+        _lastSyncedCalendarId = null;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Deleted $deleteCount events from Google Calendar'),
+            backgroundColor: AppConstants.successColor,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error deleting events: $e');
+      setState(() {
+        _isSyncing = false;
+      });
+
+      _showError('Failed to delete events: $e');
     }
   }
 
@@ -191,6 +294,21 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
                 ).popUntil((route) => route.isFirst); // Go to home
               },
             ),
+            if (_lastSyncedEvents != null && _lastSyncedEvents!.isNotEmpty) ...[
+              const SizedBox(height: AppConstants.spacingM),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Delete from Calendar'),
+                onPressed: () {
+                  Navigator.of(context).pop(); // Close success dialog
+                  _undoSync(); // Show delete confirmation
+                },
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppConstants.errorColor,
+                  side: const BorderSide(color: AppConstants.errorColor),
+                ),
+              ),
+            ],
           ],
         ),
       ),

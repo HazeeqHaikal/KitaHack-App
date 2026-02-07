@@ -170,6 +170,114 @@ If you cannot extract a value, use null. If the document is not a syllabus, retu
     }
   }
 
+  /// Estimate study time required for an academic event
+  /// Returns an object with totalHours and breakdown suggestions
+  Future<Map<String, dynamic>> estimateStudyEffort(
+    String eventTitle,
+    String eventType,
+    String description,
+    int? weightage,
+    int daysUntilDue,
+  ) async {
+    try {
+      print('Estimating study effort for: $eventTitle');
+
+      final prompt =
+          '''
+Analyze this academic event and estimate the required study/preparation time.
+
+Event Details:
+- Title: $eventTitle
+- Type: $eventType
+- Description: $description
+- Weightage: ${weightage ?? 'Unknown'}%
+- Days until due: $daysUntilDue days
+
+Return ONLY valid JSON (no markdown, no code blocks) in this EXACT format:
+{
+  "totalHours": <number>,
+  "sessionsRecommended": <number>,
+  "hoursPerSession": <number>,
+  "breakdown": [
+    {
+      "phase": "Phase name (e.g., Research, Writing, Review)",
+      "hours": <number>,
+      "description": "Brief description of activities"
+    }
+  ],
+  "reasoning": "Brief explanation of time estimate"
+}
+
+Consider:
+- Event type complexity (exams need more review time, assignments need work time)
+- Weightage (higher weight = more time investment)
+- Days available (spread effectively without overwhelming)
+- Optimal session length (2-3 hours for focus, longer for projects)
+
+Guidelines:
+- Exam: 8-15 hours total (review, practice, consolidation)
+- Assignment: 6-12 hours total (research, writing, editing)
+- Project: 10-20 hours total (planning, execution, refinement)
+- Quiz: 2-4 hours total (focused review)
+- Presentation: 5-8 hours total (prep, practice)
+- Lab: 3-6 hours total (prep, execution)
+
+Recommend 2-5 study sessions total.
+''';
+
+      final content = [Content.text(prompt)];
+
+      final response = await _generateWithRetry(content);
+
+      if (response.text == null || response.text!.isEmpty) {
+        throw Exception('Empty response from Gemini API');
+      }
+
+      // Parse JSON response
+      String cleanJson = response.text!.trim();
+      if (cleanJson.startsWith('```json')) {
+        cleanJson = cleanJson.substring(7);
+      } else if (cleanJson.startsWith('```')) {
+        cleanJson = cleanJson.substring(3);
+      }
+      if (cleanJson.endsWith('```')) {
+        cleanJson = cleanJson.substring(0, cleanJson.length - 3);
+      }
+      cleanJson = cleanJson.trim();
+
+      final result = json.decode(cleanJson) as Map<String, dynamic>;
+      print('Estimated ${result['totalHours']} hours of study needed');
+
+      return result;
+    } catch (e) {
+      print('Error estimating study effort: $e');
+      // Return reasonable defaults on error
+      return {
+        'totalHours': eventType == 'exam' ? 10 : 6,
+        'sessionsRecommended': 3,
+        'hoursPerSession': eventType == 'exam' ? 3 : 2,
+        'breakdown': [
+          {
+            'phase': 'Preparation',
+            'hours': eventType == 'exam' ? 6 : 4,
+            'description': 'Initial study and understanding',
+          },
+          {
+            'phase': 'Practice/Work',
+            'hours': eventType == 'exam' ? 3 : 2,
+            'description': 'Active work and application',
+          },
+          {
+            'phase': 'Review',
+            'hours': 1,
+            'description': 'Final review and refinement',
+          },
+        ],
+        'reasoning': 'Default estimate (AI estimation failed)',
+      };
+    }
+  }
+
   /// Get MIME type from file extension
   String? _getMimeType(String extension) {
     switch (extension) {

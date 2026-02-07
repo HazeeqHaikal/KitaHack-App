@@ -4,6 +4,8 @@ import 'package:due/utils/constants.dart';
 import 'package:due/utils/date_formatter.dart';
 import 'package:due/widgets/glass_container.dart';
 import 'package:due/widgets/custom_buttons.dart';
+import 'package:due/services/gemini_service.dart';
+import 'package:due/services/calendar_service.dart';
 
 class StudyAllocatorScreen extends StatefulWidget {
   const StudyAllocatorScreen({super.key});
@@ -13,86 +15,197 @@ class StudyAllocatorScreen extends StatefulWidget {
 }
 
 class _StudyAllocatorScreenState extends State<StudyAllocatorScreen> {
+  final GeminiService _geminiService = GeminiService();
+  final CalendarService _calendarService = CalendarService();
+
   final List<Map<String, dynamic>> _studySessions = [];
   bool _isAllocating = false;
   int _totalStudyHours = 6;
+  String? _selectedCalendarId;
+  String _statusMessage = 'Analyzing event...';
 
-  void _allocateStudySessions(AcademicEvent event) {
+  Future<void> _allocateStudySessions(AcademicEvent event) async {
     setState(() {
       _isAllocating = true;
+      _statusMessage = 'Analyzing event with AI...';
     });
 
-    // Simulate AI finding free slots in calendar
-    Future.delayed(const Duration(seconds: 2), () {
+    try {
+      // Step 1: Use Gemini to estimate study effort
+      setState(() {
+        _statusMessage = 'Estimating study time needed...';
+      });
+
+      final effortEstimate = await _geminiService.estimateStudyEffort(
+        event.title,
+        event.type.name,
+        event.description,
+        int.tryParse(event.weightage?.replaceAll('%', '') ?? ''),
+        event.daysUntilDue,
+      );
+
+      _totalStudyHours = effortEstimate['totalHours'] as int;
+      final sessionsCount = effortEstimate['sessionsRecommended'] as int;
+
+      print('AI recommends $_totalStudyHours hours in $sessionsCount sessions');
+
+      // Step 2: Check if user is authenticated with Google Calendar
+      if (!_calendarService.isAuthenticated) {
+        setState(() {
+          _statusMessage = 'Authenticating with Google Calendar...';
+        });
+
+        final account = await _calendarService.signIn();
+        if (account == null) {
+          throw Exception('Failed to authenticate with Google Calendar');
+        }
+      }
+
+      // Step 3: Get user's calendars and use primary
+      setState(() {
+        _statusMessage = 'Finding your calendars...';
+      });
+
+      final calendars = await _calendarService.getCalendars();
+      _selectedCalendarId = calendars
+          .firstWhere(
+            (cal) => cal.primary == true,
+            orElse: () => calendars.first,
+          )
+          .id;
+
+      print('Using calendar: $_selectedCalendarId');
+
+      // Step 4: Find available study slots
+      setState(() {
+        _statusMessage = 'Scanning calendar for free time slots...';
+      });
+
+      final startDate = DateTime.now().add(const Duration(days: 1));
+      final studySlots = await _calendarService.findStudySlots(
+        calendarId: _selectedCalendarId!,
+        totalHours: _totalStudyHours,
+        sessionsCount: sessionsCount,
+        startDate: startDate,
+        deadlineDate: event.dueDate,
+      );
+
+      if (studySlots.isEmpty) {
+        throw Exception(
+          'No available time slots found. Your calendar might be too busy!',
+        );
+      }
+
+      // Step 5: Format sessions for display
       setState(() {
         _isAllocating = false;
         _studySessions.clear();
-        _studySessions.addAll(_generateMockSessions(event));
+
+        for (int i = 0; i < studySlots.length; i++) {
+          final slot = studySlots[i];
+          final breakdown = effortEstimate['breakdown'] as List;
+          final phase = i < breakdown.length
+              ? breakdown[i]['phase']
+              : 'Study Session';
+
+          _studySessions.add({
+            'start': slot['start'],
+            'end': slot['end'],
+            'date': slot['start'] as DateTime,
+            'time': _formatTimeRange(
+              slot['start'] as DateTime,
+              slot['end'] as DateTime,
+            ),
+            'duration': '${slot['duration']} hours',
+            'title': '$phase ${i + 1}',
+            'description': i < breakdown.length
+                ? breakdown[i]['description']
+                : 'Focus study session',
+            'location': 'Free slot detected',
+          });
+        }
       });
-    });
+
+      print('Successfully allocated ${_studySessions.length} study sessions');
+    } catch (e) {
+      print('Error allocating study sessions: $e');
+      setState(() {
+        _isAllocating = false;
+        _statusMessage = 'Error: $e';
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to allocate sessions: $e'),
+            backgroundColor: AppConstants.errorColor,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
   }
 
-  List<Map<String, dynamic>> _generateMockSessions(AcademicEvent event) {
-    final now = DateTime.now();
-    final daysUntilDue = event.daysUntilDue;
+  String _formatTimeRange(DateTime start, DateTime end) {
+    final startHour = start.hour;
+    final endHour = end.hour;
+    final startPeriod = startHour >= 12 ? 'PM' : 'AM';
+    final endPeriod = endHour >= 12 ? 'PM' : 'AM';
+    final displayStartHour = startHour > 12 ? startHour - 12 : startHour;
+    final displayEndHour = endHour > 12 ? endHour - 12 : endHour;
 
-    // Generate study sessions based on days remaining
-    final List<Map<String, dynamic>> sessions = [];
+    return '${displayStartHour}:00 $startPeriod - ${displayEndHour}:00 $endPeriod';
+  }
 
-    if (event.type == EventType.exam) {
-      _totalStudyHours = 12;
-      // Spread 12 hours over multiple days
-      final sessionCount = (daysUntilDue / 2).floor().clamp(3, 6);
-      final hoursPerSession = (12 / sessionCount).round();
-
-      for (int i = 0; i < sessionCount; i++) {
-        final sessionDate = now.add(Duration(days: i * 2 + 1));
-        sessions.add({
-          'date': sessionDate,
-          'time': '14:00 - ${14 + hoursPerSession}:00',
-          'duration': '$hoursPerSession hours',
-          'title': 'Study Session ${i + 1}',
-          'description': 'Review chapters and practice problems',
-          'location': 'Auto-detected from calendar',
-        });
-      }
-    } else if (event.type == EventType.assignment) {
-      _totalStudyHours = 6;
-      final sessionCount = (daysUntilDue / 3).floor().clamp(2, 4);
-      final hoursPerSession = (6 / sessionCount).round();
-
-      for (int i = 0; i < sessionCount; i++) {
-        final sessionDate = now.add(Duration(days: i * 3 + 1));
-        sessions.add({
-          'date': sessionDate,
-          'time': '16:00 - ${16 + hoursPerSession}:00',
-          'duration': '$hoursPerSession hours',
-          'title': 'Work Session ${i + 1}',
-          'description': 'Focus time for assignment',
-          'location': 'Auto-detected from calendar',
-        });
-      }
-    } else {
-      _totalStudyHours = 4;
-      sessions.add({
-        'date': now.add(const Duration(days: 1)),
-        'time': '15:00 - 17:00',
-        'duration': '2 hours',
-        'title': 'Preparation Session 1',
-        'description': 'Initial work and research',
-        'location': 'Auto-detected from calendar',
-      });
-      sessions.add({
-        'date': now.add(Duration(days: (daysUntilDue / 2).round())),
-        'time': '14:00 - 16:00',
-        'duration': '2 hours',
-        'title': 'Preparation Session 2',
-        'description': 'Final review and completion',
-        'location': 'Auto-detected from calendar',
-      });
+  Future<void> _bookStudySessions(AcademicEvent event) async {
+    if (_selectedCalendarId == null || _studySessions.isEmpty) {
+      return;
     }
 
-    return sessions;
+    setState(() {
+      _isAllocating = true;
+      _statusMessage = 'Booking study sessions to your calendar...';
+    });
+
+    try {
+      final successCount = await _calendarService.createStudySessions(
+        calendarId: _selectedCalendarId!,
+        studySlots: _studySessions,
+        eventTitle: event.title,
+        eventId: event.id,
+      );
+
+      setState(() {
+        _isAllocating = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '✅ Successfully booked $successCount study sessions to your calendar!',
+            ),
+            backgroundColor: AppConstants.successColor,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error booking sessions: $e');
+      setState(() {
+        _isAllocating = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to book sessions: $e'),
+            backgroundColor: AppConstants.errorColor,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -284,17 +397,18 @@ class _StudyAllocatorScreenState extends State<StudyAllocatorScreen> {
               ),
               Expanded(
                 child: _isAllocating
-                    ? const Center(
+                    ? Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            CircularProgressIndicator(
+                            const CircularProgressIndicator(
                               color: AppConstants.secondaryColor,
                             ),
-                            SizedBox(height: AppConstants.spacingM),
+                            const SizedBox(height: AppConstants.spacingM),
                             Text(
-                              'Scanning your calendar for free time...',
-                              style: TextStyle(
+                              _statusMessage,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
                                 color: AppConstants.textSecondary,
                               ),
                             ),
@@ -322,18 +436,9 @@ class _StudyAllocatorScreenState extends State<StudyAllocatorScreen> {
                 Padding(
                   padding: const EdgeInsets.all(AppConstants.spacingL),
                   child: PrimaryButton(
-                    text: 'Book All Study Sessions',
+                    text: 'Book All Study Sessions to Calendar',
                     icon: Icons.add_to_photos,
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Sessions will be added to Google Calendar when API is connected!',
-                          ),
-                          backgroundColor: AppConstants.successColor,
-                        ),
-                      );
-                    },
+                    onPressed: () => _bookStudySessions(event),
                   ),
                 ),
             ],

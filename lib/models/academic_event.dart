@@ -8,6 +8,7 @@ class AcademicEvent {
   final EventType type;
   final String? location;
   bool isSelected;
+  String? calendarEventId; // Google Calendar event ID for synced events
 
   AcademicEvent({
     required this.id,
@@ -18,6 +19,7 @@ class AcademicEvent {
     required this.type,
     this.location,
     this.isSelected = true,
+    this.calendarEventId,
   });
 
   /// Create from JSON (for Gemini API response parsing)
@@ -31,6 +33,7 @@ class AcademicEvent {
       type: _parseEventType(json['type']),
       location: json['location'],
       isSelected: json['isSelected'] ?? true,
+      calendarEventId: json['calendarEventId'],
     );
   }
 
@@ -45,6 +48,7 @@ class AcademicEvent {
       'type': type.toString().split('.').last,
       'location': location,
       'isSelected': isSelected,
+      'calendarEventId': calendarEventId,
     };
   }
 
