@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:due/utils/constants.dart';
-import 'package:due/widgets/custom_buttons.dart';
 import 'package:due/widgets/glass_container.dart';
 import 'package:due/services/firebase_service.dart';
 
@@ -12,48 +11,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
   bool _isLoading = false;
-  bool _obscurePassword = true;
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _login() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true);
-
-    try {
-      await FirebaseService().signInWithEmail(
-        _emailController.text.trim(),
-        _passwordController.text,
-      );
-
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, '/home');
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Login failed: ${e.toString()}'),
-            backgroundColor: AppConstants.errorColor,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
 
   Future<void> _loginWithGoogle() async {
     setState(() => _isLoading = true);
@@ -80,31 +38,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _continueAsGuest() async {
-    setState(() => _isLoading = true);
-
-    try {
-      await FirebaseService().signInAnonymously();
-
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, '/home');
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to continue as guest: ${e.toString()}'),
-            backgroundColor: AppConstants.errorColor,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -117,206 +50,114 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
         child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppConstants.spacingL),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 40),
-                // App Logo/Title
-                Text(
-                  'Due',
-                  style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                    color: AppConstants.textPrimary,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 2,
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(AppConstants.spacingL),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // App Logo/Icon
+                  const Icon(
+                    Icons.calendar_today,
+                    size: 80,
+                    color: AppConstants.primaryColor,
                   ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Your Academic Timeline, Automated',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppConstants.textSecondary,
+                  const SizedBox(height: 24),
+                  
+                  // App Title
+                  Text(
+                    'DUE',
+                    style: Theme.of(context).textTheme.displayLarge?.copyWith(
+                      color: AppConstants.textPrimary,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 4,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 60),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Your Academic Timeline, Automated',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: AppConstants.textSecondary,
+                      letterSpacing: 1,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 60),
 
-                // Login Form
-                GlassContainer(
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppConstants.spacingL),
-                    child: Form(
-                      key: _formKey,
+                  // Login Container
+                  GlassContainer(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppConstants.spacingXL),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Text(
-                            'Welcome Back',
-                            style: Theme.of(context).textTheme.headlineSmall
-                                ?.copyWith(color: AppConstants.textPrimary),
+                            'Welcome',
+                            style: Theme.of(context).textTheme.headlineMedium
+                                ?.copyWith(
+                              color: AppConstants.textPrimary,
+                              fontWeight: FontWeight.bold,
+                            ),
                             textAlign: TextAlign.center,
                           ),
-                          const SizedBox(height: AppConstants.spacingL),
-
-                          // Email Field
-                          TextFormField(
-                            controller: _emailController,
-                            keyboardType: TextInputType.emailAddress,
-                            decoration: const InputDecoration(
-                              labelText: 'Email',
-                              hintText: 'Enter your email',
-                              prefixIcon: Icon(Icons.email_outlined),
-                            ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please enter your email';
-                              }
-                              if (!value.contains('@')) {
-                                return 'Please enter a valid email';
-                              }
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: AppConstants.spacingM),
-
-                          // Password Field
-                          TextFormField(
-                            controller: _passwordController,
-                            obscureText: _obscurePassword,
-                            decoration: InputDecoration(
-                              labelText: 'Password',
-                              hintText: 'Enter your password',
-                              prefixIcon: const Icon(Icons.lock_outlined),
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _obscurePassword
-                                      ? Icons.visibility_outlined
-                                      : Icons.visibility_off_outlined,
-                                ),
-                                onPressed: () {
-                                  setState(() {
-                                    _obscurePassword = !_obscurePassword;
-                                  });
-                                },
-                              ),
-                            ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please enter your password';
-                              }
-                              if (value.length < 6) {
-                                return 'Password must be at least 6 characters';
-                              }
-                              return null;
-                            },
-                          ),
                           const SizedBox(height: AppConstants.spacingS),
-
-                          // Forgot Password
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton(
-                              onPressed: () {
-                                Navigator.pushNamed(
-                                  context,
-                                  '/forgot-password',
-                                );
-                              },
-                              child: const Text('Forgot Password?'),
-                            ),
+                          Text(
+                            'Sign in with your Google account to continue',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(color: AppConstants.textSecondary),
+                            textAlign: TextAlign.center,
                           ),
-                          const SizedBox(height: AppConstants.spacingM),
+                          const SizedBox(height: AppConstants.spacingXL),
 
-                          // Login Button
-                          PrimaryButton(
-                            text: 'Login',
-                            onPressed: _isLoading ? null : _login,
-                            isLoading: _isLoading,
-                            icon: Icons.login,
-                          ),
-                          const SizedBox(height: AppConstants.spacingL),
-
-                          // Divider
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Divider(
-                                  color: AppConstants.textSecondary.withOpacity(
-                                    0.3,
-                                  ),
-                                ),
+                          // Google Sign In Button
+                          if (_isLoading)
+                            const Center(
+                              child: CircularProgressIndicator(
+                                color: AppConstants.primaryColor,
                               ),
-                              Padding(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: AppConstants.spacingM,
-                                ),
-                                child: Text(
-                                  'OR',
-                                  style: TextStyle(
-                                    color: AppConstants.textSecondary,
-                                    fontSize: 12,
-                                  ),
-                                ),
+                            )
+                          else
+                            ElevatedButton.icon(
+                              onPressed: _loginWithGoogle,
+                              icon: const Icon(Icons.g_mobiledata, size: 32),
+                              label: const Text(
+                                'Continue with Google',
+                                style: TextStyle(fontSize: 16),
                               ),
-                              Expanded(
-                                child: Divider(
-                                  color: AppConstants.textSecondary.withOpacity(
-                                    0.3,
-                                  ),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                  horizontal: 24,
                                 ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: AppConstants.spacingL),
-
-                          // Google Sign In
-                          OutlinedButton.icon(
-                            onPressed: _isLoading ? null : _loginWithGoogle,
-                            icon: const Icon(Icons.g_mobiledata, size: 32),
-                            label: const Text('Continue with Google'),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              side: BorderSide(color: AppConstants.glassBorder),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(
-                                  AppConstants.borderRadiusM,
+                                backgroundColor: Colors.white,
+                                foregroundColor: Colors.black87,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(
+                                    AppConstants.borderRadiusM,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
                           const SizedBox(height: AppConstants.spacingM),
-
-                          // Continue as Guest
-                          TextButton(
-                            onPressed: _isLoading ? null : _continueAsGuest,
-                            child: const Text('Continue as Guest'),
+                          
+                          // Info text
+                          Text(
+                            'Google Calendar access will be requested to sync your academic events',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                              color: AppConstants.textSecondary,
+                              fontSize: 12,
+                            ),
+                            textAlign: TextAlign.center,
                           ),
                         ],
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: AppConstants.spacingL),
-
-                // Sign Up Link
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      "Don't have an account? ",
-                      style: TextStyle(color: AppConstants.textSecondary),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.pushReplacementNamed(context, '/register');
-                      },
-                      child: const Text('Sign Up'),
-                    ),
-                  ],
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

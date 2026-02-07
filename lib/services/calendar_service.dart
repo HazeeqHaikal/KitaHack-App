@@ -1,44 +1,56 @@
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/calendar/v3.dart' as calendar;
 import 'package:http/http.dart' as http;
-import 'package:due/config/api_config.dart';
 import 'package:due/models/academic_event.dart';
+import 'package:due/services/firebase_service.dart';
 
 /// Service for Google Calendar API integration
 /// Handles authentication and event synchronization
+/// Reuses Google Sign-In from FirebaseService
 class CalendarService {
   static final CalendarService _instance = CalendarService._internal();
   factory CalendarService() => _instance;
   CalendarService._internal();
 
-  GoogleSignIn? _googleSignIn;
   calendar.CalendarApi? _calendarApi;
-  GoogleSignInAccount? _currentUser;
 
-  /// Initialize Google Sign-In
+
+  /// Initialize Calendar service (no longer needs separate initialization)
   void initialize() {
-    _googleSignIn = GoogleSignIn(scopes: ApiConfig.calendarScopes);
-
-    // Listen to sign-in state changes
-    _googleSignIn?.onCurrentUserChanged.listen((account) {
-      _currentUser = account;
-      if (account != null) {
-        _initializeCalendarApi();
-      }
-    });
+    print('CalendarService initialized');
   }
 
-  /// Check if user is authenticated
-  bool get isAuthenticated => _currentUser != null;
+  /// Check if user is authenticated with Google
+  bool get isAuthenticated {
+    final googleSignIn = FirebaseService().googleSignIn;
+    return googleSignIn?.currentUser != null;
+  }
 
-  /// Get current user
-  GoogleSignInAccount? get currentUser => _currentUser;
+  /// Get current user from Firebase's Google Sign-In
+  GoogleSignInAccount? get currentUser {
+    return FirebaseService().googleSignIn?.currentUser;
+  }
 
-  /// Sign in with Google
+  /// Sign in automatically reuses Firebase Google Sign-In
+  /// No need to sign in again if already authenticated
   Future<GoogleSignInAccount?> signIn() async {
+    final googleSignIn = FirebaseService().googleSignIn;
+    if (googleSignIn == null) {
+      throw Exception('Firebase not initialized');
+    }
+
     try {
-      print('Attempting Google Sign-In...');
-      final account = await _googleSignIn?.signIn();
+      // Check if already signed in
+      final currentUser = googleSignIn.currentUser;
+      if (currentUser != null) {
+        print('Already signed in: ${currentUser.email}');
+        await _initializeCalendarApi();
+        return currentUser;
+      }
+
+      // Sign in if not already authenticated
+      print('Attempting Google Sign-In for calendar...');
+      final account = await googleSignIn.signIn();
 
       if (account != null) {
         print('Sign-in successful: ${account.email}');
@@ -52,21 +64,22 @@ class CalendarService {
     }
   }
 
-  /// Sign out
+  /// Sign out (delegates to FirebaseService)
   Future<void> signOut() async {
-    await _googleSignIn?.signOut();
-    _currentUser = null;
+    await FirebaseService().signOut();
     _calendarApi = null;
-    print('Signed out successfully');
+    print('Signed out from calendar service');
   }
 
   /// Initialize Calendar API after authentication
   Future<void> _initializeCalendarApi() async {
     try {
-      final authHeaders = await _currentUser?.authHeaders;
-      if (authHeaders == null) {
-        throw Exception('Failed to get auth headers');
+      final currentUser = FirebaseService().googleSignIn?.currentUser;
+      if (currentUser == null) {
+        throw Exception('No authenticated user found');
       }
+
+      final authHeaders = await currentUser.authHeaders;
 
       final authenticatedClient = _GoogleAuthClient(authHeaders);
       _calendarApi = calendar.CalendarApi(authenticatedClient);

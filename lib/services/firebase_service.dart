@@ -17,6 +17,7 @@ class FirebaseService {
   FirebaseStorage get storage => FirebaseStorage.instance;
 
   bool _initialized = false;
+  GoogleSignIn? _googleSignIn;
 
   /// Initialize Firebase
   /// Call this once at app startup
@@ -25,6 +26,8 @@ class FirebaseService {
 
     try {
       await Firebase.initializeApp();
+      // Initialize Google Sign-In with calendar scopes
+      _googleSignIn = GoogleSignIn(scopes: ApiConfig.calendarScopes);
       _initialized = true;
       print('Firebase initialized successfully');
     } catch (e) {
@@ -183,6 +186,9 @@ class FirebaseService {
     }
   }
 
+  /// Get GoogleSignIn instance for calendar sync
+  GoogleSignIn? get googleSignIn => _googleSignIn;
+
   /// Sign in with Google
   Future<User?> signInWithGoogle() async {
     if (!_initialized) {
@@ -190,8 +196,8 @@ class FirebaseService {
     }
 
     try {
-      // Trigger the authentication flow
-      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+      // Trigger the authentication flow with calendar scopes
+      final GoogleSignInAccount? googleUser = await _googleSignIn?.signIn();
 
       if (googleUser == null) {
         // User canceled the sign-in
@@ -316,7 +322,7 @@ class FirebaseService {
   Future<void> signOut() async {
     if (!_initialized) return;
     try {
-      await GoogleSignIn().signOut(); // Sign out from Google as well
+      await _googleSignIn?.signOut(); // Sign out from Google as well
       await auth.signOut();
       print('Signed out successfully');
     } catch (e) {

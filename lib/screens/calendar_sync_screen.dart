@@ -35,7 +35,18 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
       _isLoading = true;
     });
 
-    // Check if already authenticated
+    // Automatically authenticate using existing Google Sign-In
+    // Since user is already logged in with Google, no need to ask again
+    if (!_calendarService.isAuthenticated) {
+      try {
+        await _calendarService.signIn();
+      } catch (e) {
+        print('Error auto-authenticating: $e');
+        _showError('Failed to connect to Google Calendar: $e');
+      }
+    }
+
+    // Load calendars if authenticated
     if (_calendarService.isAuthenticated) {
       await _loadCalendars();
     }
@@ -61,37 +72,9 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
   }
 
   void _signInWithGoogle() async {
-    try {
-      setState(() {
-        _isLoading = true;
-      });
-
-      await _calendarService.signIn();
-
-      if (_calendarService.isAuthenticated) {
-        await _loadCalendars();
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Signed in as ${_calendarService.currentUser?.email}',
-              ),
-              backgroundColor: AppConstants.successColor,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      print('Error signing in: $e');
-      _showError('Failed to sign in: $e');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
+    // This method is now redundant since authentication happens automatically
+    // Users are already logged in with Google when they reach this screen
+    _initialize();
   }
 
   void _syncEvents() async {
@@ -295,7 +278,7 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
           ),
           const SizedBox(height: AppConstants.spacingXL),
           Text(
-            'Connect Your Calendar',
+            'Connecting to Calendar',
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
               fontWeight: FontWeight.bold,
               color: AppConstants.textPrimary,
@@ -304,7 +287,7 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
           ),
           const SizedBox(height: AppConstants.spacingM),
           Text(
-            'Sign in with Google to sync your academic events to Google Calendar',
+            'Connecting to Google Calendar using your existing Google account...',
             style: Theme.of(
               context,
             ).textTheme.bodyLarge?.copyWith(color: AppConstants.textSecondary),
