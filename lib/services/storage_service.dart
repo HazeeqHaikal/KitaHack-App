@@ -1,11 +1,15 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:due/models/course_info.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:due/services/firebase_service.dart';
 
-/// Service for local data persistence using SharedPreferences
-/// Stores courses and events data locally
+/// Service for local and cloud data persistence
+/// Stores courses locally (SharedPreferences) and syncs to cloud (Firestore)
 class StorageService {
   static const String _coursesKey = 'saved_courses';
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseService _firebaseService = FirebaseService();
 
   /// Save a course to local storage
   Future<void> saveCourse(CourseInfo course) async {
@@ -31,10 +35,13 @@ class StorageService {
         print('Added new course: ${course.courseName}');
       }
 
-      // Convert to JSON and save
+      // Convert to JSON and save locally
       final coursesJson = courses.map((c) => json.encode(c.toJson())).toList();
       await prefs.setStringList(_coursesKey, coursesJson);
-      print('Successfully saved ${courses.length} courses to storage');
+      print('Successfully saved ${courses.length} courses to local storage');
+
+      // Sync to Firestore if user is signed in
+      await _syncCourseToCloud(course);
     } catch (e) {
       print('Error saving course: $e');
       rethrow;
@@ -84,19 +91,25 @@ class StorageService {
 
       final coursesJson = courses.map((c) => json.encode(c.toJson())).toList();
       await prefs.setStringList(_coursesKey, coursesJson);
-      print('Deleted course: $courseCode');
+      print('Deleted course from local: $courseCode');
+
+      // Delete from cloud if user is signed in
+      await _deleteCourseFromCloud(courseCode);
     } catch (e) {
       print('Error deleting course: $e');
       rethrow;
     }
   }
 
-  /// Clear all saved courses
+  /// Clear all saved courses from local and cloud storage
   Future<void> clearAllCourses() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_coursesKey);
-      print('Cleared all courses from storage');
+      print('Cleared all courses from local storage');
+
+      // Clear from cloud if user is signed in
+      await _clearCoursesFromCloud();
     } catch (e) {
       print('Error clearing courses: $e');
       rethrow;
@@ -178,6 +191,141 @@ class StorageService {
         'weeklyEvents': 0,
         'highPriorityEvents': 0,
       };
+    }
+  }
+
+  // ============== CLOUD SYNC METHODS ==============
+
+  /// Sync a single course to Firestore
+  Future<void> _syncCourseToCloud(CourseInfo course) async {
+    try {
+      final user = _firebaseService.currentUser;
+      if (user == null) {
+        print('Not signed in - skipping cloud sync');
+        return;
+      }
+
+      final userId = user.uid;
+      final courseId = course.courseCode.isEmpty
+          ? course.courseName.toLowerCase().replaceAll(' ', '_')
+          : course.courseCode;
+
+      await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('courses')
+          .doc(courseId)
+          .set(course.toJson(), SetOptions(merge: true));
+
+      print('Synced course to cloud: ${course.courseName}');
+    } catch (e) {
+      print('Error syncing course to cloud: $e');
+      // Don't rethrow - cloud sync is optional
+    }
+  }
+
+  /// Sync all courses from Firestore to local storage
+  Future<void> syncFromCloud() async {
+    try {
+      final user = _firebaseService.currentUser;
+      if (user == null) {
+        print('Not signed in - cannot sync from cloud');
+        return;
+      }
+
+      final userId = user.uid;
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('courses')
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        print('No courses found in cloud');
+        return;
+      }
+
+      // Get current local courses
+      final localCourses = await getAllCourses();
+      final localCourseCodes = localCourses.map((c) => c.courseCode).toSet();
+
+      // Add cloud courses that don't exist locally
+      int syncedCount = 0;
+      for (final doc in snapshot.docs) {
+        try {
+          final course = CourseInfo.fromJson(doc.data());
+
+          // Only add if not already in local storage
+          if (!localCourseCodes.contains(course.courseCode)) {
+            localCourses.add(course);
+            syncedCount++;
+          }
+        } catch (e) {
+          print('Error parsing cloud course ${doc.id}: $e');
+        }
+      }
+
+      if (syncedCount > 0) {
+        // Save merged courses to local storage
+        final prefs = await SharedPreferences.getInstance();
+        final coursesJson = localCourses
+            .map((c) => json.encode(c.toJson()))
+            .toList();
+        await prefs.setStringList(_coursesKey, coursesJson);
+        print('Synced $syncedCount courses from cloud to local');
+      } else {
+        print('All cloud courses already exist locally');
+      }
+    } catch (e) {
+      print('Error syncing from cloud: $e');
+      // Don't rethrow - cloud sync is optional
+    }
+  }
+
+  /// Delete a course from Firestore
+  Future<void> _deleteCourseFromCloud(String courseCode) async {
+    try {
+      final user = _firebaseService.currentUser;
+      if (user == null) return;
+
+      final userId = user.uid;
+      await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('courses')
+          .doc(courseCode)
+          .delete();
+
+      print('Deleted course from cloud: $courseCode');
+    } catch (e) {
+      print('Error deleting course from cloud: $e');
+      // Don't rethrow - cloud sync is optional
+    }
+  }
+
+  /// Clear all courses from Firestore
+  Future<void> _clearCoursesFromCloud() async {
+    try {
+      final user = _firebaseService.currentUser;
+      if (user == null) return;
+
+      final userId = user.uid;
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('courses')
+          .get();
+
+      final batch = _firestore.batch();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+
+      print('Cleared all courses from cloud');
+    } catch (e) {
+      print('Error clearing courses from cloud: $e');
+      // Don't rethrow - cloud sync is optional
     }
   }
 }

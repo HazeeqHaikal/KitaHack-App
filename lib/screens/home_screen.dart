@@ -38,6 +38,9 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
+      // Sync from cloud first if signed in
+      await _storageService.syncFromCloud();
+
       final courses = await _storageService.getAllCourses();
       final upcomingEvents = await _storageService.getUpcomingEvents(limit: 5);
       final statistics = await _storageService.getStatistics();
