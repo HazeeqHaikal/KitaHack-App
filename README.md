@@ -153,20 +153,31 @@ By automating academic organization, we:
 
 These features have **complete UI implementations** but currently use mock data instead of live AI/API integration:
 
-- 🎨 **Study Allocator Screen** (487 lines)
-  - UI: Complete study session planning interface
-  - Status: Generates mock study blocks, no actual calendar integration
-  - Future: Will use AI to find free calendar slots automatically
+- 🎨 **Smart Study Allocator** - Time Blocking (487 lines)
+  - **Concept**: A deadline is a point in time, but studying takes duration. This feature finds empty slots in the user's calendar and books "Study Sessions" automatically.
+  - **UI Status**: Complete study session planning interface implemented
+  - **Current**: Generates mock study blocks with simulated time allocation
+  - **Future Implementation**: 
+    - Gemini AI estimates study effort (e.g., "Physics exam = 6 hours study")
+    - Scans user's Google Calendar using Calendar API (Free/Busy queries)
+    - Auto-books "Study Blocks" in free time slots leading up to exam
+    - Distributes study sessions intelligently based on deadline proximity
 
 - 🎨 **Task Breakdown Screen** (547 lines)
   - UI: Complete task management and breakdown interface
   - Status: Mock AI task generation based on event type
   - Future: Will use Gemini to intelligently break down assignments
 
-- 🎨 **Resource Finder Screen** (613 lines)
-  - UI: Complete resource search and filtering interface
-  - Status: Mock YouTube/web resources displayed
-  - Future: Will integrate real search APIs for study materials
+- 🎨 **Instant Resource Finder** - Visual Enhancement (613 lines)
+  - **Concept**: Making calendar events immediately useful for revision
+  - **UI Status**: Complete resource search and filtering interface implemented
+  - **Current**: Displays mock YouTube/web resources with filtering
+  - **Future Implementation**:
+    - Gemini extracts topics from events (e.g., "Thermodynamics")
+    - Uses YouTube Data API to search top 3 educational videos per topic
+    - Auto-inserts video links into Google Calendar Event Description
+    - Provides one-click access to curated study materials
+    - Students can start learning directly from calendar notifications
 
 ### 🔄 Phase 3 - Future Enhancements
 
@@ -177,10 +188,12 @@ These features have **complete UI implementations** but currently use mock data 
 
 ### 🧠 Phase 4 - Advanced AI Features
 
-- 📚 **Study Plan Generation**: Auto-schedule study blocks before exams
-- ⚖️ **Balanced Revision**: Timetable based on topic complexity and weightage
-- 🎯 **Personalized Recommendations**: Adapt to student's productivity patterns
-- 📈 **Progress Tracking**: Milestone completion and deadline adherence
+- 🎯 **Personalized Study Plans**: Adapt scheduling to student's productivity patterns and learning pace
+- ⚖️ **Balanced Revision Strategy**: Create timetables based on topic complexity, weightage, and retention curves
+- 📊 **Performance Analytics**: Track completion rates, study patterns, and deadline adherence
+- 🧠 **Intelligent Recommendations**: Suggest optimal study times based on historical performance
+- 📈 **Progress Tracking**: Milestone completion with visual progress indicators
+- 🔄 **Adaptive Learning**: Adjust study block duration based on topic difficulty and past performance
 
 ---
 
