@@ -1,9 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/widgets/glass_container.dart';
+import 'package:due/services/firebase_service.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  final _firebaseService = FirebaseService();
+
+  String get _userEmail {
+    final user = _firebaseService.currentUser;
+    if (user?.email != null) {
+      return user!.email!;
+    }
+    return 'Not signed in';
+  }
+
+  bool get _isSignedIn => _firebaseService.isSignedIn;
 
   @override
   Widget build(BuildContext context) {
@@ -27,134 +45,58 @@ class SettingsScreen extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.all(AppConstants.spacingL),
             children: [
-              _buildSectionTitle('Account'),
-              _buildSettingItem(
-                context,
-                icon: Icons.person,
-                title: 'Profile',
-                subtitle: 'Manage your profile information',
-                onTap: () {
-                  _showComingSoon(context, 'Profile management');
-                },
-              ),
-              _buildSettingItem(
-                context,
-                icon: Icons.account_circle,
-                title: 'Google Account',
-                subtitle: 'Connected to student@university.edu',
-                onTap: () {
-                  _showComingSoon(context, 'Google account management');
-                },
-              ),
-              const SizedBox(height: AppConstants.spacingL),
-              _buildSectionTitle('Calendar'),
-              _buildSettingItem(
-                context,
-                icon: Icons.calendar_today,
-                title: 'Default Calendar',
-                subtitle: 'Personal',
-                onTap: () {
-                  _showComingSoon(context, 'Calendar selection');
-                },
-              ),
-              _buildSettingItem(
-                context,
-                icon: Icons.notifications,
-                title: 'Reminders',
-                subtitle: '1 day before due date',
-                onTap: () {
-                  _showComingSoon(context, 'Reminder settings');
-                },
-              ),
-              const SizedBox(height: AppConstants.spacingL),
-              _buildSectionTitle('Preferences'),
-              _buildSettingItem(
-                context,
-                icon: Icons.dark_mode,
-                title: 'Theme',
-                subtitle: 'Dark mode',
-                onTap: () {
-                  _showComingSoon(context, 'Theme selection');
-                },
-              ),
-              _buildSettingItem(
-                context,
-                icon: Icons.language,
-                title: 'Language',
-                subtitle: 'English',
-                onTap: () {
-                  _showComingSoon(context, 'Language selection');
-                },
-              ),
-              const SizedBox(height: AppConstants.spacingL),
-              _buildSectionTitle('Data'),
-              _buildSettingItem(
-                context,
-                icon: Icons.sync,
-                title: 'Sync Status',
-                subtitle: 'All courses synced',
-                onTap: () {
-                  _showComingSoon(context, 'Sync management');
-                },
-              ),
-              _buildSettingItem(
-                context,
-                icon: Icons.storage,
-                title: 'Storage',
-                subtitle: '4 syllabi uploaded',
-                onTap: () {
-                  _showComingSoon(context, 'Storage management');
-                },
-              ),
-              const SizedBox(height: AppConstants.spacingL),
+              if (_isSignedIn) ...[
+                _buildSectionTitle('Account'),
+                _buildSettingItem(
+                  context,
+                  icon: Icons.account_circle,
+                  title: 'Account',
+                  subtitle: _userEmail,
+                  onTap: null,
+                ),
+                const SizedBox(height: AppConstants.spacingL),
+              ],
               _buildSectionTitle('About'),
               _buildSettingItem(
                 context,
                 icon: Icons.info,
                 title: 'App Version',
                 subtitle: '1.0.0 (Beta)',
-                onTap: () {},
-              ),
-              _buildSettingItem(
-                context,
-                icon: Icons.privacy_tip,
-                title: 'Privacy Policy',
-                subtitle: 'View our privacy policy',
-                onTap: () {
-                  _showComingSoon(context, 'Privacy policy');
-                },
-              ),
-              _buildSettingItem(
-                context,
-                icon: Icons.description,
-                title: 'Terms of Service',
-                subtitle: 'View terms and conditions',
-                onTap: () {
-                  _showComingSoon(context, 'Terms of service');
-                },
+                onTap: null,
               ),
               const SizedBox(height: AppConstants.spacingXL),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppConstants.spacingL,
-                ),
-                child: TextButton.icon(
-                  onPressed: () {
-                    _showLogoutDialog(context);
-                  },
-                  icon: const Icon(
-                    Icons.logout,
-                    color: AppConstants.errorColor,
+              if (_isSignedIn)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppConstants.spacingL,
                   ),
-                  label: const Text(
-                    'Sign Out',
-                    style: TextStyle(
-                      color: AppConstants.errorColor,
-                      fontWeight: FontWeight.w600,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showLogoutDialog(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppConstants.errorColor.withOpacity(0.2),
+                      foregroundColor: AppConstants.errorColor,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: AppConstants.spacingM,
+                        horizontal: AppConstants.spacingL,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: const BorderSide(
+                          color: AppConstants.errorColor,
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                    icon: const Icon(Icons.logout),
+                    label: const Text(
+                      'Sign Out',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                      ),
                     ),
                   ),
                 ),
-              ),
             ],
           ),
         ),
@@ -225,15 +167,6 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  void _showComingSoon(BuildContext context, String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$feature - Coming soon!'),
-        backgroundColor: AppConstants.warningColor,
-      ),
-    );
-  }
-
   void _showLogoutDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -253,13 +186,46 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                '/onboarding',
-                (route) => false,
+
+              // Show loading indicator
+              if (!context.mounted) return;
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => const Center(
+                  child: CircularProgressIndicator(
+                    color: AppConstants.primaryColor,
+                  ),
+                ),
               );
+
+              try {
+                // Sign out using Firebase service
+                await _firebaseService.signOut();
+
+                // Navigate to onboarding
+                if (!context.mounted) return;
+                Navigator.pop(context); // Dismiss loading
+                Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  '/onboarding',
+                  (route) => false,
+                );
+              } catch (e) {
+                // Dismiss loading
+                if (!context.mounted) return;
+                Navigator.pop(context);
+
+                // Show error
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Sign out failed: $e'),
+                    backgroundColor: AppConstants.errorColor,
+                  ),
+                );
+              }
             },
             child: const Text(
               'Sign Out',

@@ -39,6 +39,7 @@ dependencies:
   
   # Configuration
   flutter_dotenv: ^5.2.1
+  shared_preferences: ^2.3.3
   
   # State Management
   provider: ^6.1.2

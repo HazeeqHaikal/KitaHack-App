@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:due/screens/onboarding_screen.dart';
 import 'package:due/screens/login_screen.dart';
 import 'package:due/screens/register_screen.dart';
@@ -149,8 +150,8 @@ class DueApp extends StatelessWidget {
           ),
         ),
       ),
-      // Start with onboarding screen
-      initialRoute: '/onboarding',
+      // Start with splash screen that determines initial route
+      home: const SplashScreen(),
       routes: {
         '/onboarding': (context) => const OnboardingScreen(),
         '/login': (context) => const LoginScreen(),
@@ -168,6 +169,108 @@ class DueApp extends StatelessWidget {
         '/study-allocator': (context) => const StudyAllocatorScreen(),
         '/resource-finder': (context) => const ResourceFinderScreen(),
       },
+    );
+  }
+}
+
+/// Splash screen that determines initial route based on first launch and auth state
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _determineInitialRoute();
+  }
+
+  Future<void> _determineInitialRoute() async {
+    // Add a small delay for smooth transition
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    if (!mounted) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final isFirstLaunch = prefs.getBool('isFirstLaunch') ?? true;
+
+      if (isFirstLaunch) {
+        // First time opening the app - show onboarding
+        await prefs.setBool('isFirstLaunch', false);
+        if (!mounted) return;
+        Navigator.pushReplacementNamed(context, '/onboarding');
+      } else {
+        // Check if user is already signed in
+        final firebaseService = FirebaseService();
+        final isSignedIn = firebaseService.isSignedIn;
+
+        if (!mounted) return;
+
+        if (isSignedIn) {
+          // User is signed in - go to home
+          Navigator.pushReplacementNamed(context, '/home');
+        } else {
+          // User not signed in - go to login
+          Navigator.pushReplacementNamed(context, '/login');
+        }
+      }
+    } catch (e) {
+      print('Error determining initial route: $e');
+      // Fallback to onboarding on error
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, '/onboarding');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [AppConstants.backgroundStart, AppConstants.backgroundEnd],
+          ),
+        ),
+        child: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.calendar_today,
+                size: 80,
+                color: AppConstants.primaryColor,
+              ),
+              SizedBox(height: 24),
+              Text(
+                'DUE',
+                style: TextStyle(
+                  fontSize: 48,
+                  fontWeight: FontWeight.bold,
+                  color: AppConstants.textPrimary,
+                  letterSpacing: 4,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Your Academic Timeline, Automated',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: AppConstants.textSecondary,
+                  letterSpacing: 1,
+                ),
+              ),
+              SizedBox(height: 48),
+              CircularProgressIndicator(color: AppConstants.primaryColor),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

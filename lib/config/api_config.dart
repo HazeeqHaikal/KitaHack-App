@@ -5,7 +5,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 class ApiConfig {
   // Gemini API Configuration
   static String get geminiApiKey => dotenv.env['GEMINI_API_KEY'] ?? '';
-  static const String geminiModel = 'gemini-1.5-pro';
+  static const String geminiModel =
+      'gemini-2.5-pro'; // Most capable model for document analysis
   static const String geminiBaseUrl =
       'https://generativelanguage.googleapis.com';
 
