@@ -14,7 +14,7 @@ class BottomNavBar extends StatelessWidget {
         color: AppConstants.backgroundEnd,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha: 0.3),
             blurRadius: 20,
             offset: const Offset(0, -5),
           ),
@@ -46,10 +46,10 @@ class BottomNavBar extends StatelessWidget {
               _buildCenterUploadButton(context),
               _buildNavItem(
                 context: context,
-                icon: Icons.calendar_month_rounded,
-                label: 'Calendar',
+                icon: Icons.search_rounded,
+                label: 'Resources',
                 index: 3,
-                route: '/calendar-sync',
+                route: '/resource-finder',
               ),
               _buildNavItem(
                 context: context,
@@ -77,14 +77,21 @@ class BottomNavBar extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         if (!isSelected) {
-          Navigator.pushReplacementNamed(context, route);
+          // Pop until we reach home or the desired route
+          Navigator.popUntil(
+            context,
+            (route) => route.settings.name == '/' || route.isFirst,
+          );
+          if (route != '/home') {
+            Navigator.pushNamed(context, route);
+          }
         }
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppConstants.primaryColor.withOpacity(0.2)
+              ? AppConstants.primaryColor.withValues(alpha: 0.2)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
@@ -121,7 +128,12 @@ class BottomNavBar extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         if (!isSelected) {
-          Navigator.pushReplacementNamed(context, '/upload');
+          // Pop to home first, then push upload
+          Navigator.popUntil(
+            context,
+            (route) => route.settings.name == '/' || route.isFirst,
+          );
+          Navigator.pushNamed(context, '/upload');
         }
       },
       child: Container(
@@ -134,16 +146,16 @@ class BottomNavBar extends StatelessWidget {
             colors: isSelected
                 ? [AppConstants.primaryColor, AppConstants.secondaryColor]
                 : [
-                    AppConstants.primaryColor.withOpacity(0.7),
-                    AppConstants.secondaryColor.withOpacity(0.7),
+                    AppConstants.primaryColor.withValues(alpha: 0.7),
+                    AppConstants.secondaryColor.withValues(alpha: 0.7),
                   ],
           ),
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
               color: isSelected
-                  ? AppConstants.primaryColor.withOpacity(0.5)
-                  : AppConstants.primaryColor.withOpacity(0.3),
+                  ? AppConstants.primaryColor.withValues(alpha: 0.5)
+                  : AppConstants.primaryColor.withValues(alpha: 0.3),
               blurRadius: 20,
               offset: const Offset(0, 4),
             ),

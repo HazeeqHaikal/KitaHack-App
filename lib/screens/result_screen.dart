@@ -7,7 +7,6 @@ import 'package:due/widgets/event_card.dart';
 import 'package:due/widgets/custom_buttons.dart';
 import 'package:due/widgets/glass_container.dart';
 import 'package:due/widgets/empty_state.dart';
-import 'package:due/services/storage_service.dart';
 import 'package:due/providers/app_providers.dart';
 
 class ResultScreen extends ConsumerStatefulWidget {
@@ -147,6 +146,14 @@ class _ResultScreenState extends ConsumerState<ResultScreen>
 
   int get selectedCount => _events.where((e) => e.isSelected).length;
 
+  int get syncedCount =>
+      _events.where((e) => e.isSelected && e.calendarEventId != null).length;
+
+  int get unsyncedCount =>
+      _events.where((e) => e.isSelected && e.calendarEventId == null).length;
+
+  bool get allSelectedSynced => selectedCount > 0 && unsyncedCount == 0;
+
   void _syncToCalendar() async {
     if (selectedCount == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -158,14 +165,24 @@ class _ResultScreenState extends ConsumerState<ResultScreen>
       return;
     }
 
-    // Navigate to calendar sync configuration screen
+    if (allSelectedSynced) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('All selected events are already synced'),
+          backgroundColor: AppConstants.successColor,
+        ),
+      );
+      return;
+    }
+
+    // Navigate to calendar sync configuration screen with only unsynced events
+    final unsyncedEvents = _events
+        .where((e) => e.isSelected && e.calendarEventId == null)
+        .toList();
     Navigator.pushNamed(
       context,
       '/calendar-sync',
-      arguments: {
-        'events': _events.where((e) => e.isSelected).toList(),
-        'courseInfo': _courseInfo,
-      },
+      arguments: {'events': unsyncedEvents, 'courseInfo': _courseInfo},
     );
   }
 
@@ -269,81 +286,135 @@ class _ResultScreenState extends ConsumerState<ResultScreen>
         child: SafeArea(
           child: Column(
             children: [
-              // Summary card
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppConstants.spacingM,
-                ),
-                child: _buildSummaryCard(),
-              ),
-              const SizedBox(height: AppConstants.spacingM),
-              // Course info banner
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppConstants.spacingM,
-                ),
-                child: GlassContainer(
-                  padding: const EdgeInsets.all(AppConstants.spacingM),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.school,
-                        color: AppConstants.primaryColor,
-                        size: 24,
-                      ),
-                      const SizedBox(width: AppConstants.spacingM),
-                      Expanded(
+              // Event list with banner and chips at top
+              Expanded(
+                child: filtered.isEmpty
+                    ? SingleChildScrollView(
+                        padding: const EdgeInsets.all(AppConstants.spacingM),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              '${_courseInfo!.instructor ?? 'Instructor'} • ${_courseInfo!.semester ?? 'Semester'}',
-                              style: const TextStyle(
-                                color: AppConstants.textSecondary,
-                                fontSize: 12,
+                            // Course info banner
+                            GlassContainer(
+                              padding: const EdgeInsets.all(
+                                AppConstants.spacingM,
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.school,
+                                    color: AppConstants.primaryColor,
+                                    size: 24,
+                                  ),
+                                  const SizedBox(width: AppConstants.spacingM),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '${_courseInfo!.instructor ?? 'Instructor'} • ${_courseInfo!.semester ?? 'Semester'}',
+                                          style: const TextStyle(
+                                            color: AppConstants.textSecondary,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        const Text(
+                                          'Review and select events to sync to your calendar',
+                                          style: TextStyle(
+                                            color: AppConstants.textPrimary,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            const Text(
-                              'Review and select events to sync to your calendar',
-                              style: TextStyle(
-                                color: AppConstants.textPrimary,
-                                fontSize: 13,
-                              ),
+                            const SizedBox(height: AppConstants.spacingM),
+                            const EmptyState(
+                              icon: Icons.filter_list_off,
+                              title: 'No events match',
+                              message: 'Try adjusting your filter settings',
                             ),
                           ],
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppConstants.spacingM),
-              // Filter/Sort chips
-              _buildFilterChips(),
-              // Event list
-              Expanded(
-                child: filtered.isEmpty
-                    ? const EmptyState(
-                        icon: Icons.filter_list_off,
-                        title: 'No events match',
-                        message: 'Try adjusting your filter settings',
                       )
                     : ListView.builder(
                         padding: const EdgeInsets.all(AppConstants.spacingM),
-                        itemCount: filtered.length,
+                        itemCount:
+                            filtered.length + 2, // +2 for banner and chips
                         itemBuilder: (context, index) {
-                          final event = filtered[index];
-                          return EventCard(
-                            event: event,
-                            showCheckbox: true,
-                            onSelectionChanged: (value) {
-                              setState(() {
-                                event.isSelected = value ?? false;
-                              });
-                            },
-                            onTap: () => _showEventDetails(event),
-                          );
+                          if (index == 0) {
+                            // Course info banner
+                            return Padding(
+                              padding: const EdgeInsets.only(
+                                bottom: AppConstants.spacingM,
+                              ),
+                              child: GlassContainer(
+                                padding: const EdgeInsets.all(
+                                  AppConstants.spacingM,
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.school,
+                                      color: AppConstants.primaryColor,
+                                      size: 24,
+                                    ),
+                                    const SizedBox(
+                                      width: AppConstants.spacingM,
+                                    ),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            '${_courseInfo!.instructor ?? 'Instructor'} • ${_courseInfo!.semester ?? 'Semester'}',
+                                            style: const TextStyle(
+                                              color: AppConstants.textSecondary,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          const Text(
+                                            'Review and select events to sync to your calendar',
+                                            style: TextStyle(
+                                              color: AppConstants.textPrimary,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          } else if (index == 1) {
+                            // Filter chips
+                            return Padding(
+                              padding: const EdgeInsets.only(
+                                bottom: AppConstants.spacingM,
+                              ),
+                              child: _buildFilterChips(),
+                            );
+                          } else {
+                            // Event cards
+                            final event = filtered[index - 2];
+                            return EventCard(
+                              event: event,
+                              showCheckbox: true,
+                              onSelectionChanged: (value) {
+                                setState(() {
+                                  event.isSelected = value ?? false;
+                                });
+                              },
+                              onTap: () => _showEventDetails(event),
+                            );
+                          }
                         },
                       ),
               ),
@@ -356,81 +427,9 @@ class _ResultScreenState extends ConsumerState<ResultScreen>
     );
   }
 
-  Widget _buildSummaryCard() {
-    return Container(
-      padding: const EdgeInsets.all(AppConstants.spacingM),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppConstants.primaryColor, AppConstants.secondaryColor],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(AppConstants.borderRadiusM),
-        boxShadow: [
-          BoxShadow(
-            color: AppConstants.primaryColor.withOpacity(0.4),
-            blurRadius: 15,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _buildSummaryItem(
-            icon: Icons.event,
-            label: 'Total Events',
-            value: _events.length.toString(),
-          ),
-          Container(width: 1, height: 40, color: Colors.white.withOpacity(0.3)),
-          _buildSummaryItem(
-            icon: Icons.check_circle,
-            label: 'Selected',
-            value: selectedCount.toString(),
-          ),
-          Container(width: 1, height: 40, color: Colors.white.withOpacity(0.3)),
-          _buildSummaryItem(
-            icon: Icons.priority_high,
-            label: 'High Priority',
-            value: _events
-                .where((e) => e.priority == EventPriority.high)
-                .length
-                .toString(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSummaryItem({
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    return Column(
-      children: [
-        Icon(icon, color: Colors.white, size: 28),
-        const SizedBox(height: AppConstants.spacingXS),
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 12),
-        ),
-      ],
-    );
-  }
-
   Widget _buildFilterChips() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: AppConstants.spacingM),
       child: Row(
         children: [
           _buildChip(
@@ -490,19 +489,43 @@ class _ResultScreenState extends ConsumerState<ResultScreen>
   }
 
   Widget _buildSyncButton() {
+    String buttonText;
+    IconData buttonIcon;
+    Color? buttonColor;
+
+    if (selectedCount == 0) {
+      buttonText = 'Select events to sync';
+      buttonIcon = Icons.sync_disabled;
+      buttonColor = null;
+    } else if (allSelectedSynced) {
+      buttonText = 'Synced ✓ ($selectedCount)';
+      buttonIcon = Icons.check_circle;
+      buttonColor = AppConstants.successColor;
+    } else if (unsyncedCount > 0 && syncedCount > 0) {
+      buttonText = 'Sync $unsyncedCount ($syncedCount synced)';
+      buttonIcon = Icons.sync;
+      buttonColor = AppConstants.successColor;
+    } else {
+      buttonText = 'Sync $unsyncedCount to Calendar';
+      buttonIcon = Icons.sync;
+      buttonColor = AppConstants.successColor;
+    }
+
     return GlassContainer(
       padding: const EdgeInsets.all(AppConstants.spacingM),
       borderRadius: 0, // Flat bottom
-      color: AppConstants.backgroundEnd.withOpacity(
-        0.8,
+      color: AppConstants.backgroundEnd.withValues(
+        alpha: 0.8,
       ), // Slightly more opaque for button area
       child: SafeArea(
         top: false,
         child: PrimaryButton(
-          text: 'Sync to Google Calendar ($selectedCount)',
-          icon: Icons.sync,
-          onPressed: selectedCount > 0 ? _syncToCalendar : null,
-          backgroundColor: AppConstants.successColor,
+          text: buttonText,
+          icon: buttonIcon,
+          onPressed: selectedCount > 0 && unsyncedCount > 0
+              ? _syncToCalendar
+              : null,
+          backgroundColor: buttonColor,
         ),
       ),
     );

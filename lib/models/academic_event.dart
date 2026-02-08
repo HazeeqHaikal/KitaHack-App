@@ -1,3 +1,5 @@
+import 'package:due/models/task.dart';
+
 /// Model representing an academic event extracted from a syllabus
 class AcademicEvent {
   final String id;
@@ -9,6 +11,7 @@ class AcademicEvent {
   final String? location;
   bool isSelected;
   String? calendarEventId; // Google Calendar event ID for synced events
+  List<Task>? generatedTasks; // AI-generated task breakdown
 
   AcademicEvent({
     required this.id,
@@ -20,6 +23,7 @@ class AcademicEvent {
     this.location,
     this.isSelected = true,
     this.calendarEventId,
+    this.generatedTasks,
   });
 
   /// Create from JSON (for Gemini API response parsing)
@@ -34,6 +38,11 @@ class AcademicEvent {
       location: json['location'],
       isSelected: json['isSelected'] ?? true,
       calendarEventId: json['calendarEventId'],
+      generatedTasks: json['generatedTasks'] != null
+          ? (json['generatedTasks'] as List)
+                .map((t) => Task.fromJson(t))
+                .toList()
+          : null,
     );
   }
 
@@ -49,6 +58,7 @@ class AcademicEvent {
       'location': location,
       'isSelected': isSelected,
       'calendarEventId': calendarEventId,
+      'generatedTasks': generatedTasks?.map((t) => t.toJson()).toList(),
     };
   }
 

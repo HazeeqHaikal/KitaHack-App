@@ -50,7 +50,9 @@ class EventCard extends StatelessWidget {
               ),
               child: Checkbox(
                 value: event.isSelected,
-                onChanged: onSelectionChanged,
+                onChanged: event.calendarEventId != null
+                    ? null
+                    : onSelectionChanged,
                 activeColor: AppConstants.primaryColor,
                 checkColor: Colors.white,
                 shape: RoundedRectangleBorder(

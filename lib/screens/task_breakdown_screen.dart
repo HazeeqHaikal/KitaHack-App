@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:due/models/academic_event.dart';
 import 'package:due/models/task.dart';
@@ -7,16 +8,17 @@ import 'package:due/services/gemini_service.dart';
 import 'package:due/config/api_config.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/widgets/glass_container.dart';
-import 'package:due/widgets/custom_buttons.dart';
+import 'package:due/providers/app_providers.dart';
 
-class TaskBreakdownScreen extends StatefulWidget {
+class TaskBreakdownScreen extends ConsumerStatefulWidget {
   const TaskBreakdownScreen({super.key});
 
   @override
-  State<TaskBreakdownScreen> createState() => _TaskBreakdownScreenState();
+  ConsumerState<TaskBreakdownScreen> createState() =>
+      _TaskBreakdownScreenState();
 }
 
-class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
+class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
   final GeminiService _geminiService = GeminiService();
   List<Task> _tasks = [];
   bool _isGenerating = false;
@@ -43,6 +45,10 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
         _hasGenerated = true;
       });
 
+      // Save tasks to event and update storage
+      event.generatedTasks = tasks;
+      await _saveTasksToEvent(event);
+
       // Show success message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -68,6 +74,30 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
           ),
         );
       }
+    }
+  }
+
+  Future<void> _saveTasksToEvent(AcademicEvent event) async {
+    try {
+      final storageService = ref.read(storageServiceProvider);
+
+      // Get the course that contains this event
+      final courses = await storageService.getAllCourses();
+      for (var course in courses) {
+        final eventIndex = course.events.indexWhere((e) => e.id == event.id);
+        if (eventIndex != -1) {
+          // Update the event with generated tasks
+          course.events[eventIndex].generatedTasks = event.generatedTasks;
+          // Save the updated course (automatically syncs to Firebase Firestore)
+          await storageService.saveCourse(course);
+          // Refresh courses provider
+          await ref.read(coursesProvider.notifier).refresh();
+          print('✓ Tasks saved to Firebase for event: ${event.title}');
+          break;
+        }
+      }
+    } catch (e) {
+      print('Error saving tasks to event: $e');
     }
   }
 
@@ -127,12 +157,16 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
     });
   }
 
-  void _toggleTaskCompletion(int index) {
+  void _toggleTaskCompletion(int index, AcademicEvent event) {
     setState(() {
       _tasks[index] = _tasks[index].copyWith(
         isCompleted: !_tasks[index].isCompleted,
       );
     });
+
+    // Save updated tasks to event
+    event.generatedTasks = _tasks;
+    _saveTasksToEvent(event);
   }
 
   @override
@@ -143,10 +177,49 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
       return const Scaffold(body: Center(child: Text('Event not found')));
     }
 
-    // Auto-generate on first load (simple mode)
+    // Load existing tasks if they exist, otherwise auto-generate on first load
     if (!_hasGenerated && !_isGenerating && _tasks.isEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _generateTaskBreakdown(event);
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        // Sync from Firebase first to ensure we have the latest data
+        final storageService = ref.read(storageServiceProvider);
+        await storageService.syncFromCloud();
+
+        // Reload the event with latest data from storage
+        final courses = await storageService.getAllCourses();
+        AcademicEvent? latestEvent;
+        for (var course in courses) {
+          final foundEvent = course.events.firstWhere(
+            (e) => e.id == event.id,
+            orElse: () => event,
+          );
+          if (foundEvent.id == event.id) {
+            latestEvent = foundEvent;
+            break;
+          }
+        }
+
+        final eventToUse = latestEvent ?? event;
+
+        if (eventToUse.generatedTasks != null &&
+            eventToUse.generatedTasks!.isNotEmpty) {
+          // Load existing tasks from Firebase
+          setState(() {
+            _tasks = List.from(eventToUse.generatedTasks!);
+            _hasGenerated = true;
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('✓ Loaded ${_tasks.length} tasks from cloud'),
+                backgroundColor: AppConstants.successColor,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+        } else {
+          // Generate new tasks
+          _generateTaskBreakdown(eventToUse);
+        }
       });
     }
 
@@ -181,285 +254,7 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
         child: SafeArea(
           child: Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.all(AppConstants.spacingL),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Header Card
-                    GlassContainer(
-                      padding: const EdgeInsets.all(AppConstants.spacingM),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: AppConstants.primaryColor.withOpacity(
-                                    0.2,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(
-                                  Icons.auto_awesome,
-                                  color: AppConstants.primaryColor,
-                                  size: 20,
-                                ),
-                              ),
-                              const SizedBox(width: AppConstants.spacingM),
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'AI Task Breakdown',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Beat procrastination with bite-sized tasks',
-                                      style: TextStyle(
-                                        color: AppConstants.textSecondary,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: AppConstants.spacingM),
-                          Container(
-                            padding: const EdgeInsets.all(
-                              AppConstants.spacingS,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppConstants.primaryColor.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.lightbulb,
-                                  color: AppConstants.primaryColor,
-                                  size: 16,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    event.title,
-                                    style: const TextStyle(
-                                      color: AppConstants.textPrimary,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // Dev Mode Badge
-                    if (ApiConfig.devMode) ...[
-                      const SizedBox(height: AppConstants.spacingM),
-                      Container(
-                        padding: const EdgeInsets.all(AppConstants.spacingS),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: Colors.orange.withOpacity(0.5),
-                          ),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.science, color: Colors.orange, size: 16),
-                            SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Dev Mode: Using mock task breakdown',
-                                style: TextStyle(
-                                  color: Colors.orange,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-
-                    // Optional Upload Section
-                    if (!_isGenerating) ...[
-                      const SizedBox(height: AppConstants.spacingM),
-                      GlassContainer(
-                        padding: const EdgeInsets.all(AppConstants.spacingM),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(
-                                  Icons.upload_file,
-                                  color: AppConstants.secondaryColor,
-                                  size: 18,
-                                ),
-                                const SizedBox(width: 8),
-                                const Expanded(
-                                  child: Text(
-                                    'Want Better Results?',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                                if (_contextFile != null)
-                                  const Icon(
-                                    Icons.check_circle,
-                                    color: AppConstants.successColor,
-                                    size: 18,
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Upload assignment details for more specific task breakdown',
-                              style: TextStyle(
-                                color: AppConstants.textSecondary,
-                                fontSize: 12,
-                              ),
-                            ),
-                            const SizedBox(height: AppConstants.spacingM),
-                            if (_contextFile == null)
-                              OutlinedButton.icon(
-                                onPressed: _pickContextFile,
-                                icon: const Icon(Icons.add_circle_outline),
-                                label: const Text(
-                                  'Upload Instructions (Optional)',
-                                ),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: AppConstants.secondaryColor,
-                                  side: const BorderSide(
-                                    color: AppConstants.secondaryColor,
-                                  ),
-                                ),
-                              )
-                            else
-                              Container(
-                                padding: const EdgeInsets.all(
-                                  AppConstants.spacingS,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppConstants.successColor.withOpacity(
-                                    0.1,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: AppConstants.successColor
-                                        .withOpacity(0.3),
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.insert_drive_file,
-                                      color: AppConstants.successColor,
-                                      size: 16,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        _contextFile!.path.split('/').last,
-                                        style: const TextStyle(
-                                          color: AppConstants.textPrimary,
-                                          fontSize: 12,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.close),
-                                      iconSize: 18,
-                                      color: AppConstants.textSecondary,
-                                      onPressed: _removeContextFile,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            if (_contextFile != null) ...[
-                              const SizedBox(height: AppConstants.spacingS),
-                              ElevatedButton.icon(
-                                onPressed: () {
-                                  _generateTaskBreakdown(event);
-                                },
-                                icon: const Icon(Icons.auto_awesome),
-                                label: const Text('Regenerate with Context'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppConstants.secondaryColor,
-                                  foregroundColor: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-
-                    // Stats Card
-                    if (_tasks.isNotEmpty) ...[
-                      const SizedBox(height: AppConstants.spacingM),
-                      GlassContainer(
-                        padding: const EdgeInsets.all(AppConstants.spacingM),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: [
-                            _buildStatItem(
-                              'Total Tasks',
-                              _tasks.length.toString(),
-                              Icons.checklist,
-                            ),
-                            Container(
-                              width: 1,
-                              height: 30,
-                              color: AppConstants.glassBorder,
-                            ),
-                            _buildStatItem(
-                              'Completed',
-                              _tasks
-                                  .where((t) => t.isCompleted)
-                                  .length
-                                  .toString(),
-                              Icons.check_circle,
-                            ),
-                            Container(
-                              width: 1,
-                              height: 30,
-                              color: AppConstants.glassBorder,
-                            ),
-                            _buildStatItem(
-                              'Est. Time',
-                              _calculateTotalTime(),
-                              Icons.schedule,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-
-              // Task List
+              // Task List with all content
               Expanded(
                 child: _isGenerating
                     ? Center(
@@ -527,19 +322,97 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
                         ),
                       )
                     : _tasks.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'No tasks yet',
-                          style: TextStyle(color: AppConstants.textSecondary),
+                    ? SingleChildScrollView(
+                        padding: const EdgeInsets.all(AppConstants.spacingL),
+                        child: Column(
+                          children: [
+                            _buildHeaderCard(event),
+                            if (ApiConfig.devMode) ...[
+                              const SizedBox(height: AppConstants.spacingM),
+                              _buildDevModeBadge(),
+                            ],
+                            if (!_isGenerating) ...[
+                              const SizedBox(height: AppConstants.spacingM),
+                              _buildUploadSection(event),
+                            ],
+                            const SizedBox(height: AppConstants.spacingXL),
+                            const Text(
+                              'No tasks yet',
+                              style: TextStyle(
+                                color: AppConstants.textSecondary,
+                              ),
+                            ),
+                          ],
                         ),
                       )
                     : ListView.builder(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppConstants.spacingL,
-                        ),
-                        itemCount: _tasks.length,
+                        padding: const EdgeInsets.all(AppConstants.spacingL),
+                        itemCount:
+                            _tasks.length +
+                            1 + // Header
+                            (ApiConfig.devMode ? 1 : 0) +
+                            (!_isGenerating ? 1 : 0) +
+                            (_tasks.isNotEmpty ? 1 : 0), // Stats
                         itemBuilder: (context, index) {
-                          return _buildTaskCard(index);
+                          int currentIndex = 0;
+
+                          // Header Card
+                          if (index == currentIndex) {
+                            return Padding(
+                              padding: const EdgeInsets.only(
+                                bottom: AppConstants.spacingM,
+                              ),
+                              child: _buildHeaderCard(event),
+                            );
+                          }
+                          currentIndex++;
+
+                          // Dev Mode Badge
+                          if (ApiConfig.devMode) {
+                            if (index == currentIndex) {
+                              return Padding(
+                                padding: const EdgeInsets.only(
+                                  bottom: AppConstants.spacingM,
+                                ),
+                                child: _buildDevModeBadge(),
+                              );
+                            }
+                            currentIndex++;
+                          }
+
+                          // Upload Section
+                          if (!_isGenerating) {
+                            if (index == currentIndex) {
+                              return Padding(
+                                padding: const EdgeInsets.only(
+                                  bottom: AppConstants.spacingM,
+                                ),
+                                child: _buildUploadSection(event),
+                              );
+                            }
+                            currentIndex++;
+                          }
+
+                          // Stats Card
+                          if (_tasks.isNotEmpty) {
+                            if (index == currentIndex) {
+                              return Padding(
+                                padding: const EdgeInsets.only(
+                                  bottom: AppConstants.spacingM,
+                                ),
+                                child: _buildStatsCard(),
+                              );
+                            }
+                            currentIndex++;
+                          }
+
+                          // Task cards
+                          final taskIndex = index - currentIndex;
+                          if (taskIndex >= 0 && taskIndex < _tasks.length) {
+                            return _buildTaskCard(taskIndex, event);
+                          }
+
+                          return const SizedBox.shrink();
                         },
                       ),
               ),
@@ -613,7 +486,7 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
     );
   }
 
-  Widget _buildTaskCard(int index) {
+  Widget _buildTaskCard(int index, AcademicEvent event) {
     final task = _tasks[index];
 
     return Container(
@@ -702,7 +575,7 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
             Checkbox(
               value: task.isCompleted,
               onChanged: (value) {
-                _toggleTaskCompletion(index);
+                _toggleTaskCompletion(index, event);
               },
               activeColor: AppConstants.successColor,
               shape: RoundedRectangleBorder(
@@ -735,5 +608,234 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
     } else {
       return '${totalMinutes}m';
     }
+  }
+
+  Widget _buildHeaderCard(AcademicEvent event) {
+    return GlassContainer(
+      padding: const EdgeInsets.all(AppConstants.spacingM),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppConstants.primaryColor.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.auto_awesome,
+                  color: AppConstants.primaryColor,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: AppConstants.spacingM),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'AI Task Breakdown',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    Text(
+                      'Beat procrastination with bite-sized tasks',
+                      style: TextStyle(
+                        color: AppConstants.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppConstants.spacingM),
+          Container(
+            padding: const EdgeInsets.all(AppConstants.spacingS),
+            decoration: BoxDecoration(
+              color: AppConstants.primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.lightbulb,
+                  color: AppConstants.primaryColor,
+                  size: 16,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    event.title,
+                    style: const TextStyle(
+                      color: AppConstants.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDevModeBadge() {
+    return Container(
+      padding: const EdgeInsets.all(AppConstants.spacingS),
+      decoration: BoxDecoration(
+        color: Colors.orange.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.orange.withOpacity(0.5)),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.science, color: Colors.orange, size: 16),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Dev Mode: Using mock task breakdown',
+              style: TextStyle(color: Colors.orange, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUploadSection(AcademicEvent event) {
+    return GlassContainer(
+      padding: const EdgeInsets.all(AppConstants.spacingM),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.upload_file,
+                color: AppConstants.secondaryColor,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Want Better Results?',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              if (_contextFile != null)
+                const Icon(
+                  Icons.check_circle,
+                  color: AppConstants.successColor,
+                  size: 18,
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Upload assignment details for more specific task breakdown',
+            style: TextStyle(color: AppConstants.textSecondary, fontSize: 12),
+          ),
+          const SizedBox(height: AppConstants.spacingM),
+          if (_contextFile == null)
+            OutlinedButton.icon(
+              onPressed: _pickContextFile,
+              icon: const Icon(Icons.add_circle_outline),
+              label: const Text('Upload Instructions (Optional)'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppConstants.secondaryColor,
+                side: const BorderSide(color: AppConstants.secondaryColor),
+              ),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.all(AppConstants.spacingS),
+              decoration: BoxDecoration(
+                color: AppConstants.successColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppConstants.successColor.withOpacity(0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.insert_drive_file,
+                    color: AppConstants.successColor,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _contextFile!.path.split('/').last,
+                      style: const TextStyle(
+                        color: AppConstants.textPrimary,
+                        fontSize: 12,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    iconSize: 18,
+                    color: AppConstants.textSecondary,
+                    onPressed: _removeContextFile,
+                  ),
+                ],
+              ),
+            ),
+          if (_contextFile != null) ...[
+            const SizedBox(height: AppConstants.spacingS),
+            ElevatedButton.icon(
+              onPressed: () {
+                _generateTaskBreakdown(event);
+              },
+              icon: const Icon(Icons.auto_awesome),
+              label: const Text('Regenerate with Context'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppConstants.secondaryColor,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatsCard() {
+    return GlassContainer(
+      padding: const EdgeInsets.all(AppConstants.spacingM),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildStatItem(
+            'Total Tasks',
+            _tasks.length.toString(),
+            Icons.checklist,
+          ),
+          Container(width: 1, height: 30, color: AppConstants.glassBorder),
+          _buildStatItem(
+            'Completed',
+            _tasks.where((t) => t.isCompleted).length.toString(),
+            Icons.check_circle,
+          ),
+          Container(width: 1, height: 30, color: AppConstants.glassBorder),
+          _buildStatItem('Est. Time', _calculateTotalTime(), Icons.schedule),
+        ],
+      ),
+    );
   }
 }

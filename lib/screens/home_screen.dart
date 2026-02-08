@@ -51,7 +51,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     // Watch providers for reactive updates
     final coursesAsync = ref.watch(coursesProvider);
     final stats = ref.watch(coursesStatsProvider);
-    final workloadData = ref.watch(workloadHeatmapProvider);
 
     return Scaffold(
       // Ensure the background gradient covers the entire scaffold
@@ -146,17 +145,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // Stats overview
-                          _buildStatsGrid(context, stats),
-                          const SizedBox(height: AppConstants.spacingXL),
-                          // Workload Heat Map
-                          _buildSectionHeader(
-                            context,
-                            'Workload Overview',
-                            Icons.calendar_view_week,
-                          ),
-                          const SizedBox(height: AppConstants.spacingM),
-                          _buildWorkloadHeatMap(context, workloadData, courses),
+                          // Key stats
+                          _buildSimpleStats(context, stats),
                           const SizedBox(height: AppConstants.spacingXL),
                           // Upcoming deadlines section
                           _buildSectionHeader(
@@ -219,607 +209,65 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  Widget _buildStatsGrid(BuildContext context, CoursesStats stats) {
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: AppConstants.spacingM,
-      crossAxisSpacing: AppConstants.spacingM,
-      childAspectRatio: 1.4,
-      children: [
-        _buildStatCard(
-          context,
-          icon: Icons.library_books,
-          label: 'Active Courses',
-          value: stats.totalCourses.toString(),
-          color: AppConstants.primaryColor,
-        ),
-        _buildStatCard(
-          context,
-          icon: Icons.event_note,
-          label: 'Completed',
-          value: stats.totalCompleted.toString(),
-          color: AppConstants.secondaryColor,
-        ),
-        _buildStatCard(
-          context,
-          icon: Icons.alarm,
-          label: 'Upcoming',
-          value: stats.upcomingEvents.toString(),
-          color: AppConstants.warningColor,
-        ),
-        _buildStatCard(
-          context,
-          icon: Icons.trending_up,
-          label: 'Avg Progress',
-          value: '${stats.averageProgress.toStringAsFixed(1)}%',
-          color: AppConstants.successColor,
-        ),
-      ],
+  Widget _buildSimpleStats(BuildContext context, CoursesStats stats) {
+    return GlassContainer(
+      padding: const EdgeInsets.all(AppConstants.spacingL),
+      hasShadow: true,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildStatItem(
+            icon: Icons.school_rounded,
+            label: 'Courses',
+            value: stats.totalCourses.toString(),
+            color: AppConstants.primaryColor,
+          ),
+          Container(width: 1, height: 40, color: AppConstants.glassBorder),
+          _buildStatItem(
+            icon: Icons.event_outlined,
+            label: 'Upcoming',
+            value: stats.upcomingEvents.toString(),
+            color: AppConstants.warningColor,
+          ),
+          Container(width: 1, height: 40, color: AppConstants.glassBorder),
+          _buildStatItem(
+            icon: Icons.check_circle_outline,
+            label: 'Completed',
+            value: stats.totalCompleted.toString(),
+            color: AppConstants.successColor,
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildStatCard(
-    BuildContext context, {
+  Widget _buildStatItem({
     required IconData icon,
     required String label,
     required String value,
     required Color color,
   }) {
-    return GlassContainer(
-      hasShadow: true,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(AppConstants.spacingM),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(colors: [color, color.withOpacity(0.6)]),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withOpacity(0.4),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Icon(icon, color: Colors.white, size: 24),
-          ),
-          const SizedBox(height: AppConstants.spacingM),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          Text(
-            label,
-            style: const TextStyle(
-              color: AppConstants.textSecondary,
-              fontSize: 12,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWorkloadHeatMap(
-    BuildContext context,
-    Map<DateTime, double> workloadData,
-    List<CourseInfo> courses,
-  ) {
-    if (courses.isEmpty) {
-      return GlassContainer(
-        padding: const EdgeInsets.all(AppConstants.spacingL),
-        child: const Column(
-          children: [
-            Icon(
-              Icons.calendar_view_week,
-              size: 48,
-              color: AppConstants.textSecondary,
-            ),
-            SizedBox(height: AppConstants.spacingM),
-            Text(
-              'No workload data yet',
-              style: TextStyle(
-                color: AppConstants.textPrimary,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            SizedBox(height: AppConstants.spacingS),
-            Text(
-              'Upload a syllabus to see your workload distribution',
-              style: TextStyle(color: AppConstants.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Convert workload map to list format for display
-    final weeklyDataList = workloadData.entries.map((entry) {
-      final weekStart = entry.key;
-      final totalWeight = entry.value;
-
-      // Determine intensity level
-      String intensity;
-      Color color;
-      if (totalWeight >= 60) {
-        intensity = 'Heavy';
-        color = AppConstants.errorColor;
-      } else if (totalWeight >= 30) {
-        intensity = 'Medium';
-        color = AppConstants.warningColor;
-      } else if (totalWeight > 0) {
-        intensity = 'Light';
-        color = AppConstants.successColor;
-      } else {
-        intensity = 'Free';
-        color = AppConstants.textSecondary.withOpacity(0.3);
-      }
-
-      return {
-        'weekStart': weekStart,
-        'totalWeight': totalWeight,
-        'intensity': intensity,
-        'color': color,
-      };
-    }).toList();
-
-    return GlassContainer(
-      padding: const EdgeInsets.all(AppConstants.spacingM),
-      hasShadow: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Legend
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildLegendItem(
-                'Free',
-                AppConstants.textSecondary.withOpacity(0.3),
-              ),
-              _buildLegendItem('Light', AppConstants.successColor),
-              _buildLegendItem('Medium', AppConstants.warningColor),
-              _buildLegendItem('Heavy', AppConstants.errorColor),
-            ],
-          ),
-          const SizedBox(height: AppConstants.spacingM),
-          const Divider(color: AppConstants.glassBorder, height: 1),
-          const SizedBox(height: AppConstants.spacingM),
-          // Heat map grid
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: AppConstants.spacingM,
-              mainAxisSpacing: AppConstants.spacingM,
-              childAspectRatio: 1.2,
-            ),
-            itemCount: weeklyDataList.length,
-            itemBuilder: (context, index) {
-              final weekData = weeklyDataList[index];
-              return _buildWeekCell(context, weekData);
-            },
-          ),
-          const SizedBox(height: AppConstants.spacingM),
-          // Summary text
-          Text(
-            'Next 6 weeks workload distribution',
-            style: TextStyle(
-              color: AppConstants.textSecondary,
-              fontSize: 12,
-              fontStyle: FontStyle.italic,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLegendItem(String label, Color color) {
-    return Row(
+    return Column(
       children: [
-        Container(
-          width: 16,
-          height: 16,
-          decoration: BoxDecoration(
+        Icon(icon, color: color, size: 28),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: TextStyle(
             color: color,
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: AppConstants.glassBorder, width: 1),
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
           ),
         ),
-        const SizedBox(width: 4),
+        const SizedBox(height: 4),
         Text(
           label,
           style: const TextStyle(
             color: AppConstants.textSecondary,
-            fontSize: 11,
+            fontSize: 12,
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildWeekCell(BuildContext context, Map<String, dynamic> weekData) {
-    final weekStart = weekData['weekStart'] as DateTime;
-    final totalWeight = weekData['totalWeight'] as double;
-    final intensity = weekData['intensity'] as String;
-    final color = weekData['color'] as Color;
-
-    // Calculate week number from now
-    final now = DateTime.now();
-    final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
-    final weekNumber =
-        weekStart
-                .difference(
-                  DateTime(
-                    startOfWeek.year,
-                    startOfWeek.month,
-                    startOfWeek.day,
-                  ),
-                )
-                .inDays ~/
-            7 +
-        1;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(AppConstants.borderRadiusM),
-        border: Border.all(color: color.withOpacity(0.5), width: 2),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.2),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppConstants.spacingS),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              'Week $weekNumber',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              DateFormatter.formatShortDate(weekStart),
-              style: const TextStyle(
-                color: AppConstants.textSecondary,
-                fontSize: 10,
-              ),
-            ),
-            const SizedBox(height: 4),
-            if (totalWeight > 0) ...[
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '${totalWeight.toInt()}%',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ] else
-              Text(
-                intensity,
-                style: const TextStyle(
-                  color: AppConstants.textSecondary,
-                  fontSize: 11,
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showWeekDetailsDialog(
-    BuildContext context,
-    Map<String, dynamic> weekData,
-  ) {
-    final weekStart = weekData['weekStart'] as DateTime;
-    final weekEnd = weekData['weekEnd'] as DateTime;
-    final events = weekData['events'] as List<AcademicEvent>;
-    final intensity = weekData['intensity'] as String;
-    final totalWeight = weekData['totalWeight'] as double;
-
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: GlassContainer(
-          padding: const EdgeInsets.all(AppConstants.spacingL),
-          hasShadow: true,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.calendar_view_week,
-                    color: AppConstants.primaryColor,
-                    size: 24,
-                  ),
-                  const SizedBox(width: AppConstants.spacingS),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Week ${weekData['weekNumber']}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          '${DateFormatter.formatShortDate(weekStart)} - ${DateFormatter.formatShortDate(weekEnd)}',
-                          style: const TextStyle(
-                            color: AppConstants.textSecondary,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppConstants.spacingM),
-              Container(
-                padding: const EdgeInsets.all(AppConstants.spacingM),
-                decoration: BoxDecoration(
-                  color: (weekData['color'] as Color).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(
-                    AppConstants.borderRadiusM,
-                  ),
-                  border: Border.all(
-                    color: (weekData['color'] as Color).withOpacity(0.5),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    Column(
-                      children: [
-                        Text(
-                          intensity,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const Text(
-                          'Intensity',
-                          style: TextStyle(
-                            color: AppConstants.textSecondary,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Container(
-                      width: 1,
-                      height: 30,
-                      color: AppConstants.glassBorder,
-                    ),
-                    Column(
-                      children: [
-                        Text(
-                          '${events.length}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const Text(
-                          'Events',
-                          style: TextStyle(
-                            color: AppConstants.textSecondary,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Container(
-                      width: 1,
-                      height: 30,
-                      color: AppConstants.glassBorder,
-                    ),
-                    Column(
-                      children: [
-                        Text(
-                          '${totalWeight.toInt()}%',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const Text(
-                          'Weight',
-                          style: TextStyle(
-                            color: AppConstants.textSecondary,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: AppConstants.spacingM),
-              const Text(
-                'Events this week:',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: AppConstants.spacingS),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 300),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: events.length,
-                  itemBuilder: (context, index) {
-                    final event = events[index];
-                    final priorityColor = event.priority == EventPriority.high
-                        ? AppConstants.errorColor
-                        : event.priority == EventPriority.medium
-                        ? AppConstants.warningColor
-                        : AppConstants.successColor;
-
-                    return Container(
-                      margin: const EdgeInsets.only(
-                        bottom: AppConstants.spacingS,
-                      ),
-                      padding: const EdgeInsets.all(AppConstants.spacingS),
-                      decoration: BoxDecoration(
-                        color: AppConstants.glassSurface.withOpacity(0.5),
-                        borderRadius: BorderRadius.circular(
-                          AppConstants.borderRadiusS,
-                        ),
-                        border: Border.all(
-                          color: priorityColor.withOpacity(0.5),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 4,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: priorityColor,
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ),
-                          const SizedBox(width: AppConstants.spacingS),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  event.title,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 2),
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.calendar_today,
-                                      size: 10,
-                                      color: AppConstants.textSecondary,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      DateFormatter.formatDate(event.dueDate),
-                                      style: const TextStyle(
-                                        color: AppConstants.textSecondary,
-                                        fontSize: 11,
-                                      ),
-                                    ),
-                                    const SizedBox(
-                                      width: AppConstants.spacingS,
-                                    ),
-                                    if (event.weightage != null &&
-                                        event.weightage!.isNotEmpty) ...[
-                                      Icon(
-                                        Icons.fitness_center,
-                                        size: 10,
-                                        color: AppConstants.textSecondary,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        '${event.weightage}%',
-                                        style: const TextStyle(
-                                          color: AppConstants.textSecondary,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _getEventTypeColor(
-                                event.type,
-                              ).withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: _getEventTypeColor(event.type),
-                              ),
-                            ),
-                            child: Text(
-                              event.type
-                                  .toString()
-                                  .split('.')
-                                  .last
-                                  .toUpperCase(),
-                              style: TextStyle(
-                                color: _getEventTypeColor(event.type),
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
