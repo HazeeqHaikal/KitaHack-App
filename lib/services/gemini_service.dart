@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:due/config/api_config.dart';
 import 'package:due/models/course_info.dart';
+import 'package:due/models/academic_event.dart';
+import 'package:due/models/task.dart';
 import 'package:due/services/mock_data_service.dart';
 import 'package:due/services/usage_tracking_service.dart';
 import 'package:due/services/response_cache_service.dart';
@@ -308,6 +310,348 @@ Recommend 2-5 study sessions total.
       print('Error estimating study effort: $e');
       // Return reasonable defaults on error
       return _getMockEffortEstimate(eventType);
+    }
+  }
+
+  /// Generate task breakdown for an academic event
+  ///
+  /// Option 1: Simple mode - uses only event data
+  /// Option 2: Enhanced mode - includes uploaded file for better context
+  ///
+  /// [event] - The academic event to break down
+  /// [contextFile] - Optional file with additional instructions/requirements
+  /// Returns List of [Task] objects with titles, durations, and descriptions
+  Future<List<Task>> generateTaskBreakdown(
+    AcademicEvent event, {
+    File? contextFile,
+  }) async {
+    try {
+      print('Generating task breakdown for: ${event.title}');
+
+      // Check if dev mode is enabled
+      if (ApiConfig.devMode) {
+        print('DEV MODE: Using mock task breakdown');
+        await Future.delayed(const Duration(seconds: 2));
+        return _getMockTaskBreakdown(event.type);
+      }
+
+      // Build the prompt based on available context
+      final prompt = _buildTaskBreakdownPrompt(event);
+
+      List<Content> content;
+
+      if (contextFile != null) {
+        print('Enhanced mode: Including uploaded context file');
+        // Option 2: Enhanced mode with uploaded file
+        final bytes = await contextFile.readAsBytes();
+        final extension = contextFile.path.split('.').last.toLowerCase();
+        final mimeType = _getMimeType(extension);
+
+        if (mimeType == null) {
+          throw Exception('Unsupported file type: $extension');
+        }
+
+        content = [
+          Content.multi([TextPart(prompt), DataPart(mimeType, bytes)]),
+        ];
+      } else {
+        print('Simple mode: Using event data only');
+        // Option 1: Simple mode with just event data
+        content = [Content.text(prompt)];
+      }
+
+      // Log API call for tracking
+      if (ApiConfig.enableUsageTracking) {
+        await _usageTracking.logApiCall('task_breakdown');
+      }
+
+      // Generate content with retry logic
+      final response = await _generateWithRetry(content);
+
+      if (response.text == null || response.text!.isEmpty) {
+        throw Exception('Empty response from Gemini API');
+      }
+
+      print('Received task breakdown response, parsing...');
+
+      // Parse the JSON response
+      final tasks = _parseTaskBreakdownResponse(response.text!);
+
+      print('Successfully generated ${tasks.length} tasks');
+
+      return tasks;
+    } catch (e) {
+      print('Error generating task breakdown: $e');
+      // Fallback to mock data on error
+      return _getMockTaskBreakdown(event.type);
+    }
+  }
+
+  /// Build the task breakdown prompt for Gemini
+  String _buildTaskBreakdownPrompt(AcademicEvent event) {
+    return '''
+You are an expert academic planner. Break down this academic event into detailed, actionable subtasks that will help a student complete it successfully.
+
+EVENT DETAILS:
+- Title: ${event.title}
+- Type: ${event.type.toString().split('.').last}
+- Due Date: ${event.dueDate}
+- Description: ${event.description}
+${event.weightage != null ? '- Weightage: ${event.weightage}' : ''}
+
+IMPORTANT: Return ONLY valid JSON, no markdown formatting, no code blocks, no explanations.
+
+Return a JSON array of tasks in this EXACT format:
+[
+  {
+    "id": "unique_identifier",
+    "title": "Clear, actionable task title",
+    "duration": "Estimated time (e.g., '2 hours', '30 min')",
+    "description": "Optional: Additional details or tips for this task"
+  }
+]
+
+REQUIREMENTS:
+1. Break down into 5-10 specific, actionable subtasks
+2. Order tasks logically (research → plan → execute → review)
+3. Estimate realistic durations for each task
+4. For assignments: Include research, drafting, revising, formatting, submission
+5. For exams: Include topic breakdown, practice, review, summary notes
+6. For projects: Include planning, development, testing, documentation, presentation
+7. Make tasks concrete and measurable (avoid vague tasks like "study hard")
+8. Consider the event weightage for task depth
+
+Example for an assignment:
+[
+  {"id": "1", "title": "Read assignment requirements thoroughly", "duration": "15 min", "description": "Highlight key requirements and grading criteria"},
+  {"id": "2", "title": "Research topic and gather 5-7 credible sources", "duration": "2 hours", "description": "Focus on academic journals and textbooks"},
+  {"id": "3", "title": "Create detailed outline with main points", "duration": "30 min", "description": "Structure: intro, 3 body sections, conclusion"},
+  {"id": "4", "title": "Write first draft (don't edit yet)", "duration": "3 hours", "description": "Focus on getting ideas down, aim for 80% of word count"},
+  {"id": "5", "title": "Revise content for clarity and arguments", "duration": "1 hour", "description": "Check logic flow and evidence support"},
+  {"id": "6", "title": "Edit for grammar, citations, and formatting", "duration": "45 min", "description": "Use citation style guide, proofread twice"},
+  {"id": "7", "title": "Final review and submit", "duration": "15 min", "description": "Check submission requirements and deadline"}
+]
+
+Now generate the task breakdown:
+''';
+  }
+
+  /// Parse task breakdown response from Gemini
+  List<Task> _parseTaskBreakdownResponse(String responseText) {
+    try {
+      // Clean up the response (remove markdown code blocks if present)
+      var cleanJson = responseText
+          .replaceAll('```json', '')
+          .replaceAll('```', '')
+          .trim();
+
+      // Find JSON array in response
+      final arrayStart = cleanJson.indexOf('[');
+      final arrayEnd = cleanJson.lastIndexOf(']');
+
+      if (arrayStart != -1 && arrayEnd != -1) {
+        cleanJson = cleanJson.substring(arrayStart, arrayEnd + 1);
+      }
+
+      final jsonArray = json.decode(cleanJson) as List<dynamic>;
+
+      return jsonArray.map((taskJson) => Task.fromJson(taskJson)).toList();
+    } catch (e) {
+      print('Error parsing task breakdown response: $e');
+      print('Response text: $responseText');
+      throw Exception('Failed to parse task breakdown: $e');
+    }
+  }
+
+  /// Get mock task breakdown for dev mode or error fallback
+  List<Task> _getMockTaskBreakdown(EventType eventType) {
+    switch (eventType) {
+      case EventType.assignment:
+        return [
+          Task(
+            id: '1',
+            title: 'Read assignment requirements thoroughly',
+            duration: '15 min',
+            description: 'Highlight key requirements and grading criteria',
+          ),
+          Task(
+            id: '2',
+            title: 'Research topic and gather sources',
+            duration: '2 hours',
+            description: 'Focus on credible academic sources',
+          ),
+          Task(
+            id: '3',
+            title: 'Create outline and structure',
+            duration: '30 min',
+            description: 'Plan introduction, body, and conclusion',
+          ),
+          Task(
+            id: '4',
+            title: 'Write first draft',
+            duration: '3 hours',
+            description: 'Focus on getting ideas down',
+          ),
+          Task(
+            id: '5',
+            title: 'Review and revise content',
+            duration: '1 hour',
+            description: 'Check logic flow and arguments',
+          ),
+          Task(
+            id: '6',
+            title: 'Proofread and format',
+            duration: '30 min',
+            description: 'Check grammar, citations, formatting',
+          ),
+          Task(
+            id: '7',
+            title: 'Submit assignment',
+            duration: '10 min',
+            description: 'Double-check submission requirements',
+          ),
+        ];
+      case EventType.exam:
+        return [
+          Task(
+            id: '1',
+            title: 'Review syllabus and exam topics',
+            duration: '30 min',
+            description: 'Identify key topics and weightage',
+          ),
+          Task(
+            id: '2',
+            title: 'Organize study materials and notes',
+            duration: '45 min',
+            description: 'Gather textbooks, notes, practice problems',
+          ),
+          Task(
+            id: '3',
+            title: 'Study Chapter 1-3',
+            duration: '4 hours',
+            description: 'Read, take notes, summarize key concepts',
+          ),
+          Task(
+            id: '4',
+            title: 'Study Chapter 4-6',
+            duration: '4 hours',
+            description: 'Read, take notes, summarize key concepts',
+          ),
+          Task(
+            id: '5',
+            title: 'Practice problems and exercises',
+            duration: '3 hours',
+            description: 'Work through textbook and past exam questions',
+          ),
+          Task(
+            id: '6',
+            title: 'Review past exams/quizzes',
+            duration: '2 hours',
+            description: 'Identify common question patterns',
+          ),
+          Task(
+            id: '7',
+            title: 'Create summary notes',
+            duration: '1 hour',
+            description: 'Condense key formulas, concepts, definitions',
+          ),
+          Task(
+            id: '8',
+            title: 'Final review session',
+            duration: '2 hours',
+            description: 'Review summary notes and practice problems',
+          ),
+        ];
+      case EventType.project:
+        return [
+          Task(
+            id: '1',
+            title: 'Understand project requirements',
+            duration: '30 min',
+            description: 'Review rubric and deliverables',
+          ),
+          Task(
+            id: '2',
+            title: 'Form team and assign roles',
+            duration: '1 hour',
+            description: 'Define responsibilities and timeline',
+          ),
+          Task(
+            id: '3',
+            title: 'Brainstorm ideas and approaches',
+            duration: '2 hours',
+            description: 'Evaluate feasibility and resources',
+          ),
+          Task(
+            id: '4',
+            title: 'Create project plan and timeline',
+            duration: '1 hour',
+            description: 'Set milestones and deadlines',
+          ),
+          Task(
+            id: '5',
+            title: 'Research and data collection',
+            duration: '5 hours',
+            description: 'Gather necessary information and resources',
+          ),
+          Task(
+            id: '6',
+            title: 'Develop/implement solution',
+            duration: '8 hours',
+            description: 'Build, code, or create project deliverable',
+          ),
+          Task(
+            id: '7',
+            title: 'Test and debug',
+            duration: '3 hours',
+            description: 'Ensure everything works as expected',
+          ),
+          Task(
+            id: '8',
+            title: 'Prepare documentation',
+            duration: '2 hours',
+            description: 'Write reports, comments, user guides',
+          ),
+          Task(
+            id: '9',
+            title: 'Create presentation',
+            duration: '2 hours',
+            description: 'Design slides and prepare demo',
+          ),
+          Task(
+            id: '10',
+            title: 'Practice presentation',
+            duration: '1 hour',
+            description: 'Rehearse delivery and timing',
+          ),
+        ];
+      default:
+        return [
+          Task(
+            id: '1',
+            title: 'Review requirements',
+            duration: '20 min',
+            description: 'Understand what needs to be done',
+          ),
+          Task(
+            id: '2',
+            title: 'Prepare materials',
+            duration: '1 hour',
+            description: 'Gather necessary resources',
+          ),
+          Task(
+            id: '3',
+            title: 'Complete main work',
+            duration: '3 hours',
+            description: 'Execute the primary task',
+          ),
+          Task(
+            id: '4',
+            title: 'Review and finalize',
+            duration: '30 min',
+            description: 'Check quality and submit',
+          ),
+        ];
     }
   }
 

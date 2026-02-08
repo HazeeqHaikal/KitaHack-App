@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:due/screens/onboarding_screen.dart';
 import 'package:due/screens/login_screen.dart';
 import 'package:due/screens/home_screen.dart';
@@ -17,6 +18,7 @@ import 'package:due/screens/resource_finder_screen.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/services/firebase_service.dart';
 import 'package:due/services/calendar_service.dart';
+import 'package:due/providers/app_providers.dart';
 
 void main() async {
   // Ensure Flutter bindings are initialized
@@ -32,6 +34,10 @@ void main() async {
       'App will continue but API features may not work without configuration',
     );
   }
+
+  // Initialize SharedPreferences once - cached for entire app lifecycle
+  final prefs = await SharedPreferences.getInstance();
+  print('SharedPreferences initialized and cached');
 
   // Initialize Firebase (optional - app works without it)
   try {
@@ -54,7 +60,15 @@ void main() async {
     ),
   );
 
-  runApp(const DueApp());
+  runApp(
+    ProviderScope(
+      overrides: [
+        // Override the SharedPreferences provider with the cached instance
+        sharedPreferencesProvider.overrideWithValue(prefs),
+      ],
+      child: const DueApp(),
+    ),
+  );
 }
 
 class DueApp extends StatelessWidget {

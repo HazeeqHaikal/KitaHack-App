@@ -10,6 +10,22 @@ class ResponseCacheService {
   static const String _cacheKey = 'gemini_response_cache';
   static const int maxCacheAgeDays = 7; // Auto-expire after 7 days
   static const int maxCacheSize = 50; // Keep max 50 cached responses
+  final SharedPreferences? _cachedPrefs;
+
+  /// Default constructor - fetches SharedPreferences on demand (legacy)
+  ResponseCacheService() : _cachedPrefs = null;
+
+  /// Constructor with cached SharedPreferences - eliminates repeated getInstance() calls
+  ResponseCacheService.withPrefs(SharedPreferences prefs)
+    : _cachedPrefs = prefs;
+
+  /// Get SharedPreferences instance - uses cached if available
+  Future<SharedPreferences> _getPrefs() async {
+    if (_cachedPrefs != null) {
+      return _cachedPrefs!;
+    }
+    return await SharedPreferences.getInstance();
+  }
 
   /// Generate a hash for a file to use as cache key
   Future<String> _generateFileHash(File file) async {
@@ -26,7 +42,7 @@ class ResponseCacheService {
   /// Load cache from storage
   Future<Map<String, dynamic>> _loadCache() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _getPrefs();
       final cacheJson = prefs.getString(_cacheKey);
 
       if (cacheJson == null || cacheJson.isEmpty) {
@@ -43,7 +59,7 @@ class ResponseCacheService {
   /// Save cache to storage
   Future<void> _saveCache(Map<String, dynamic> cache) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _getPrefs();
       await prefs.setString(_cacheKey, json.encode(cache));
     } catch (e) {
       print('Error saving cache: $e');
@@ -180,7 +196,7 @@ class ResponseCacheService {
   /// Clear all cached responses
   Future<void> clearCache() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _getPrefs();
       await prefs.remove(_cacheKey);
       print('Cache cleared successfully');
     } catch (e) {

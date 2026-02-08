@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:due/models/academic_event.dart';
 import 'package:due/models/course_info.dart';
 import 'package:due/utils/constants.dart';
@@ -7,23 +8,26 @@ import 'package:due/widgets/custom_buttons.dart';
 import 'package:due/widgets/glass_container.dart';
 import 'package:due/widgets/empty_state.dart';
 import 'package:due/services/storage_service.dart';
+import 'package:due/providers/app_providers.dart';
 
-class ResultScreen extends StatefulWidget {
+class ResultScreen extends ConsumerStatefulWidget {
   const ResultScreen({super.key});
 
   @override
-  State<ResultScreen> createState() => _ResultScreenState();
+  ConsumerState<ResultScreen> createState() => _ResultScreenState();
 }
 
-class _ResultScreenState extends State<ResultScreen> {
-  final StorageService _storageService = StorageService();
+class _ResultScreenState extends ConsumerState<ResultScreen>
+    with AutomaticKeepAliveClientMixin {
   // Sample extracted events (will be replaced with actual data from Gemini)
   List<AcademicEvent> _events = [];
   CourseInfo? _courseInfo;
   String _filterType = 'all';
   String _sortBy = 'date';
   bool _isLoaded = false;
-  bool _isLoadingCourse = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void didChangeDependencies() {
@@ -37,6 +41,7 @@ class _ResultScreenState extends State<ResultScreen> {
   Future<void> _loadData() async {
     // Get arguments from navigation
     final args = ModalRoute.of(context)?.settings.arguments;
+    final storageService = ref.read(storageServiceProvider);
 
     if (args is CourseInfo) {
       // Direct CourseInfo object (from upload screen)
@@ -50,27 +55,18 @@ class _ResultScreenState extends State<ResultScreen> {
       final courseCode = args['courseCode'] as String?;
 
       if (courseCode != null) {
-        setState(() {
-          _isLoadingCourse = true;
-        });
-
         try {
           // Load course from storage
-          final course = await _storageService.getCourse(courseCode);
+          final course = await storageService.getCourse(courseCode);
 
           if (course != null) {
             setState(() {
               _courseInfo = course;
               _events = List.from(course.events);
-              _isLoadingCourse = false;
             });
             print('Loaded ${_events.length} events for course: $courseCode');
           } else {
             // Course not found in storage
-            setState(() {
-              _isLoadingCourse = false;
-            });
-
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -83,9 +79,6 @@ class _ResultScreenState extends State<ResultScreen> {
           }
         } catch (e) {
           print('Error loading course: $e');
-          setState(() {
-            _isLoadingCourse = false;
-          });
 
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -123,6 +116,11 @@ class _ResultScreenState extends State<ResultScreen> {
         Navigator.pop(context);
       }
     }
+  }
+
+  Future<void> _handleRefresh() async {
+    await ref.read(coursesProvider.notifier).refresh();
+    await _loadData();
   }
 
   List<AcademicEvent> get filteredEvents {
@@ -199,7 +197,9 @@ class _ResultScreenState extends State<ResultScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_courseInfo == null || _isLoadingCourse) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
+
+    if (_courseInfo == null) {
       return Scaffold(
         body: Container(
           decoration: const BoxDecoration(

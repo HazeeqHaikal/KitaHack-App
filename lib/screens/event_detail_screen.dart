@@ -369,21 +369,61 @@ class EventDetailScreen extends StatelessWidget {
   }
 
   Widget _buildActionButtons(BuildContext context, AcademicEvent event) {
+    final bool isSynced = event.calendarEventId != null;
+
     return Column(
       children: [
-        PrimaryButton(
-          text: 'Add to Calendar',
-          icon: Icons.calendar_today,
-          onPressed: () {
-            Navigator.pushNamed(
-              context,
-              '/calendar-sync',
-              arguments: {
-                'events': [event],
-              },
-            );
-          },
-        ),
+        // Calendar sync button - show different UI based on sync status
+        if (isSynced)
+          // Already synced - show status button
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppConstants.spacingL,
+              vertical: AppConstants.spacingM,
+            ),
+            decoration: BoxDecoration(
+              color: AppConstants.successColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(AppConstants.borderRadiusM),
+              border: Border.all(
+                color: AppConstants.successColor.withOpacity(0.3),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.check_circle,
+                  color: AppConstants.successColor,
+                  size: 20,
+                ),
+                const SizedBox(width: AppConstants.spacingS),
+                const Text(
+                  'Synced to Calendar',
+                  style: TextStyle(
+                    color: AppConstants.successColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          // Not synced yet - show add button
+          PrimaryButton(
+            text: 'Add to Calendar',
+            icon: Icons.calendar_today,
+            onPressed: () {
+              Navigator.pushNamed(
+                context,
+                '/calendar-sync',
+                arguments: {
+                  'events': [event],
+                },
+              );
+            },
+          ),
         const SizedBox(height: AppConstants.spacingM),
         SecondaryButton(
           text: 'Set Reminder',

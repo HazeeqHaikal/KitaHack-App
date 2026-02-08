@@ -1,5 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:due/models/academic_event.dart';
+import 'package:due/models/task.dart';
+import 'package:due/services/gemini_service.dart';
+import 'package:due/config/api_config.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/widgets/glass_container.dart';
 import 'package:due/widgets/custom_buttons.dart';
@@ -12,185 +17,122 @@ class TaskBreakdownScreen extends StatefulWidget {
 }
 
 class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
-  final List<Map<String, dynamic>> _tasks = [];
+  final GeminiService _geminiService = GeminiService();
+  List<Task> _tasks = [];
   bool _isGenerating = false;
+  File? _contextFile;
+  String? _errorMessage;
+  bool _hasGenerated = false;
 
-  void _generateTaskBreakdown(AcademicEvent event) {
+  Future<void> _generateTaskBreakdown(AcademicEvent event) async {
     setState(() {
       _isGenerating = true;
+      _errorMessage = null;
     });
 
-    // Simulate AI task breakdown generation
-    Future.delayed(const Duration(seconds: 2), () {
+    try {
+      // Call Gemini API with optional context file
+      final tasks = await _geminiService.generateTaskBreakdown(
+        event,
+        contextFile: _contextFile,
+      );
+
+      setState(() {
+        _tasks = tasks;
+        _isGenerating = false;
+        _hasGenerated = true;
+      });
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '✓ Generated ${tasks.length} tasks ${_contextFile != null ? 'with enhanced context' : 'successfully'}',
+            ),
+            backgroundColor: AppConstants.successColor,
+          ),
+        );
+      }
+    } catch (e) {
       setState(() {
         _isGenerating = false;
-        _tasks.clear();
-        _tasks.addAll(_getMockTasks(event));
+        _errorMessage = e.toString();
       });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: AppConstants.errorColor,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickContextFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+        allowMultiple: false,
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final file = File(result.files.single.path!);
+        final fileSize = await file.length();
+        final maxSize = 10 * 1024 * 1024; // 10MB
+
+        if (fileSize > maxSize) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('File too large. Maximum size is 10MB.'),
+                backgroundColor: AppConstants.errorColor,
+              ),
+            );
+          }
+          return;
+        }
+
+        setState(() {
+          _contextFile = file;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('📄 Added: ${result.files.single.name}'),
+              backgroundColor: AppConstants.successColor,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking file: $e'),
+            backgroundColor: AppConstants.errorColor,
+          ),
+        );
+      }
+    }
+  }
+
+  void _removeContextFile() {
+    setState(() {
+      _contextFile = null;
     });
   }
 
-  List<Map<String, dynamic>> _getMockTasks(AcademicEvent event) {
-    // Mock AI-generated task breakdown based on event type
-    switch (event.type) {
-      case EventType.assignment:
-        return [
-          {
-            'title': 'Read assignment requirements thoroughly',
-            'duration': '15 min',
-            'completed': false,
-          },
-          {
-            'title': 'Research topic and gather sources',
-            'duration': '2 hours',
-            'completed': false,
-          },
-          {
-            'title': 'Create outline and structure',
-            'duration': '30 min',
-            'completed': false,
-          },
-          {
-            'title': 'Write first draft',
-            'duration': '3 hours',
-            'completed': false,
-          },
-          {
-            'title': 'Review and revise content',
-            'duration': '1 hour',
-            'completed': false,
-          },
-          {
-            'title': 'Proofread and format',
-            'duration': '30 min',
-            'completed': false,
-          },
-          {
-            'title': 'Submit assignment',
-            'duration': '10 min',
-            'completed': false,
-          },
-        ];
-      case EventType.exam:
-        return [
-          {
-            'title': 'Review syllabus and exam topics',
-            'duration': '30 min',
-            'completed': false,
-          },
-          {
-            'title': 'Organize study materials and notes',
-            'duration': '45 min',
-            'completed': false,
-          },
-          {
-            'title': 'Study Chapter 1-3',
-            'duration': '4 hours',
-            'completed': false,
-          },
-          {
-            'title': 'Study Chapter 4-6',
-            'duration': '4 hours',
-            'completed': false,
-          },
-          {
-            'title': 'Practice problems and exercises',
-            'duration': '3 hours',
-            'completed': false,
-          },
-          {
-            'title': 'Review past exams/quizzes',
-            'duration': '2 hours',
-            'completed': false,
-          },
-          {
-            'title': 'Create summary notes',
-            'duration': '1 hour',
-            'completed': false,
-          },
-          {
-            'title': 'Final review session',
-            'duration': '2 hours',
-            'completed': false,
-          },
-        ];
-      case EventType.project:
-        return [
-          {
-            'title': 'Understand project requirements',
-            'duration': '30 min',
-            'completed': false,
-          },
-          {
-            'title': 'Form team and assign roles',
-            'duration': '1 hour',
-            'completed': false,
-          },
-          {
-            'title': 'Brainstorm ideas and approaches',
-            'duration': '2 hours',
-            'completed': false,
-          },
-          {
-            'title': 'Create project plan and timeline',
-            'duration': '1 hour',
-            'completed': false,
-          },
-          {
-            'title': 'Research and data collection',
-            'duration': '5 hours',
-            'completed': false,
-          },
-          {
-            'title': 'Develop/implement solution',
-            'duration': '8 hours',
-            'completed': false,
-          },
-          {
-            'title': 'Test and debug',
-            'duration': '3 hours',
-            'completed': false,
-          },
-          {
-            'title': 'Prepare documentation',
-            'duration': '2 hours',
-            'completed': false,
-          },
-          {
-            'title': 'Create presentation',
-            'duration': '2 hours',
-            'completed': false,
-          },
-          {
-            'title': 'Practice presentation',
-            'duration': '1 hour',
-            'completed': false,
-          },
-        ];
-      default:
-        return [
-          {
-            'title': 'Review requirements',
-            'duration': '20 min',
-            'completed': false,
-          },
-          {
-            'title': 'Prepare materials',
-            'duration': '1 hour',
-            'completed': false,
-          },
-          {
-            'title': 'Complete main work',
-            'duration': '3 hours',
-            'completed': false,
-          },
-          {
-            'title': 'Review and finalize',
-            'duration': '30 min',
-            'completed': false,
-          },
-        ];
-    }
+  void _toggleTaskCompletion(int index) {
+    setState(() {
+      _tasks[index] = _tasks[index].copyWith(
+        isCompleted: !_tasks[index].isCompleted,
+      );
+    });
   }
 
   @override
@@ -201,8 +143,8 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
       return const Scaffold(body: Center(child: Text('Event not found')));
     }
 
-    // Auto-generate on first load
-    if (_tasks.isEmpty && !_isGenerating) {
+    // Auto-generate on first load (simple mode)
+    if (!_hasGenerated && !_isGenerating && _tasks.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _generateTaskBreakdown(event);
       });
@@ -215,6 +157,18 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
         backgroundColor: Colors.transparent,
         foregroundColor: AppConstants.textPrimary,
         elevation: 0,
+        actions: [
+          if (_contextFile != null || _hasGenerated)
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Regenerate Tasks',
+              onPressed: _isGenerating
+                  ? null
+                  : () {
+                      _generateTaskBreakdown(event);
+                    },
+            ),
+        ],
       ),
       body: Container(
         decoration: const BoxDecoration(
@@ -232,6 +186,7 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // Header Card
                     GlassContainer(
                       padding: const EdgeInsets.all(AppConstants.spacingM),
                       child: Column(
@@ -311,8 +266,158 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: AppConstants.spacingM),
-                    if (_tasks.isNotEmpty)
+
+                    // Dev Mode Badge
+                    if (ApiConfig.devMode) ...[
+                      const SizedBox(height: AppConstants.spacingM),
+                      Container(
+                        padding: const EdgeInsets.all(AppConstants.spacingS),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.orange.withOpacity(0.5),
+                          ),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.science, color: Colors.orange, size: 16),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Dev Mode: Using mock task breakdown',
+                                style: TextStyle(
+                                  color: Colors.orange,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    // Optional Upload Section
+                    if (!_isGenerating) ...[
+                      const SizedBox(height: AppConstants.spacingM),
+                      GlassContainer(
+                        padding: const EdgeInsets.all(AppConstants.spacingM),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.upload_file,
+                                  color: AppConstants.secondaryColor,
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 8),
+                                const Expanded(
+                                  child: Text(
+                                    'Want Better Results?',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                                if (_contextFile != null)
+                                  const Icon(
+                                    Icons.check_circle,
+                                    color: AppConstants.successColor,
+                                    size: 18,
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Upload assignment details for more specific task breakdown',
+                              style: TextStyle(
+                                color: AppConstants.textSecondary,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: AppConstants.spacingM),
+                            if (_contextFile == null)
+                              OutlinedButton.icon(
+                                onPressed: _pickContextFile,
+                                icon: const Icon(Icons.add_circle_outline),
+                                label: const Text(
+                                  'Upload Instructions (Optional)',
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppConstants.secondaryColor,
+                                  side: const BorderSide(
+                                    color: AppConstants.secondaryColor,
+                                  ),
+                                ),
+                              )
+                            else
+                              Container(
+                                padding: const EdgeInsets.all(
+                                  AppConstants.spacingS,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppConstants.successColor.withOpacity(
+                                    0.1,
+                                  ),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: AppConstants.successColor
+                                        .withOpacity(0.3),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.insert_drive_file,
+                                      color: AppConstants.successColor,
+                                      size: 16,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        _contextFile!.path.split('/').last,
+                                        style: const TextStyle(
+                                          color: AppConstants.textPrimary,
+                                          fontSize: 12,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.close),
+                                      iconSize: 18,
+                                      color: AppConstants.textSecondary,
+                                      onPressed: _removeContextFile,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            if (_contextFile != null) ...[
+                              const SizedBox(height: AppConstants.spacingS),
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  _generateTaskBreakdown(event);
+                                },
+                                icon: const Icon(Icons.auto_awesome),
+                                label: const Text('Regenerate with Context'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppConstants.secondaryColor,
+                                  foregroundColor: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    // Stats Card
+                    if (_tasks.isNotEmpty) ...[
+                      const SizedBox(height: AppConstants.spacingM),
                       GlassContainer(
                         padding: const EdgeInsets.all(AppConstants.spacingM),
                         child: Row(
@@ -331,7 +436,7 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
                             _buildStatItem(
                               'Completed',
                               _tasks
-                                  .where((t) => t['completed'] as bool)
+                                  .where((t) => t.isCompleted)
                                   .length
                                   .toString(),
                               Icons.check_circle,
@@ -349,26 +454,76 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
                           ],
                         ),
                       ),
+                    ],
                   ],
                 ),
               ),
+
+              // Task List
               Expanded(
                 child: _isGenerating
-                    ? const Center(
+                    ? Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            CircularProgressIndicator(
+                            const CircularProgressIndicator(
                               color: AppConstants.primaryColor,
                             ),
-                            SizedBox(height: AppConstants.spacingM),
-                            Text(
+                            const SizedBox(height: AppConstants.spacingM),
+                            const Text(
                               'AI is analyzing your task...',
                               style: TextStyle(
                                 color: AppConstants.textSecondary,
                               ),
                             ),
+                            const SizedBox(height: AppConstants.spacingS),
+                            Text(
+                              _contextFile != null
+                                  ? 'Using enhanced context from uploaded file'
+                                  : 'Using event details',
+                              style: TextStyle(
+                                color: AppConstants.textSecondary.withOpacity(
+                                  0.7,
+                                ),
+                                fontSize: 12,
+                              ),
+                            ),
                           ],
+                        ),
+                      )
+                    : _errorMessage != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(AppConstants.spacingL),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.error_outline,
+                                color: AppConstants.errorColor,
+                                size: 48,
+                              ),
+                              const SizedBox(height: AppConstants.spacingM),
+                              Text(
+                                'Error: $_errorMessage',
+                                style: const TextStyle(
+                                  color: AppConstants.textSecondary,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: AppConstants.spacingM),
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  _generateTaskBreakdown(event);
+                                },
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Try Again'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppConstants.primaryColor,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       )
                     : _tasks.isEmpty
@@ -388,22 +543,43 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
                         },
                       ),
               ),
-              if (_tasks.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.all(AppConstants.spacingL),
-                  child: PrimaryButton(
-                    text: 'Add All to Google Tasks',
-                    icon: Icons.add_task,
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Tasks will be synced to Google Tasks when API is connected!',
-                          ),
-                          backgroundColor: AppConstants.successColor,
+
+              // Progress Indicator
+              if (_tasks.isNotEmpty && !_isGenerating)
+                Container(
+                  padding: const EdgeInsets.all(AppConstants.spacingM),
+                  color: AppConstants.glassSurface.withOpacity(0.5),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.trending_up,
+                        color: AppConstants.primaryColor,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Progress: ${_tasks.where((t) => t.isCompleted).length}/${_tasks.length} tasks',
+                        style: const TextStyle(
+                          color: AppConstants.textPrimary,
+                          fontSize: 12,
                         ),
-                      );
-                    },
+                      ),
+                      const SizedBox(width: AppConstants.spacingM),
+                      Expanded(
+                        child: LinearProgressIndicator(
+                          value: _tasks.isEmpty
+                              ? 0
+                              : _tasks.where((t) => t.isCompleted).length /
+                                    _tasks.length,
+                          backgroundColor: AppConstants.glassBorder.withOpacity(
+                            0.3,
+                          ),
+                          valueColor: const AlwaysStoppedAnimation<Color>(
+                            AppConstants.successColor,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
             ],
@@ -439,30 +615,38 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
 
   Widget _buildTaskCard(int index) {
     final task = _tasks[index];
-    final isCompleted = task['completed'] as bool;
 
     return Container(
       margin: const EdgeInsets.only(bottom: AppConstants.spacingM),
       child: GlassContainer(
         padding: const EdgeInsets.all(AppConstants.spacingM),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: AppConstants.primaryColor.withOpacity(0.1),
+                color: task.isCompleted
+                    ? AppConstants.successColor.withOpacity(0.2)
+                    : AppConstants.primaryColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Center(
-                child: Text(
-                  '${index + 1}',
-                  style: const TextStyle(
-                    color: AppConstants.primaryColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
+                child: task.isCompleted
+                    ? const Icon(
+                        Icons.check,
+                        color: AppConstants.successColor,
+                        size: 18,
+                      )
+                    : Text(
+                        '${index + 1}',
+                        style: const TextStyle(
+                          color: AppConstants.primaryColor,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
               ),
             ),
             const SizedBox(width: AppConstants.spacingM),
@@ -471,14 +655,14 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    task['title'] as String,
+                    task.title,
                     style: TextStyle(
-                      color: isCompleted
+                      color: task.isCompleted
                           ? AppConstants.textSecondary
                           : Colors.white,
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      decoration: isCompleted
+                      decoration: task.isCompleted
                           ? TextDecoration.lineThrough
                           : TextDecoration.none,
                     ),
@@ -493,7 +677,7 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        task['duration'] as String,
+                        task.duration,
                         style: const TextStyle(
                           color: AppConstants.textSecondary,
                           fontSize: 11,
@@ -501,15 +685,24 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
                       ),
                     ],
                   ),
+                  if (task.description != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      task.description!,
+                      style: TextStyle(
+                        color: AppConstants.textSecondary.withOpacity(0.7),
+                        fontSize: 11,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
             Checkbox(
-              value: isCompleted,
+              value: task.isCompleted,
               onChanged: (value) {
-                setState(() {
-                  _tasks[index]['completed'] = value ?? false;
-                });
+                _toggleTaskCompletion(index);
               },
               activeColor: AppConstants.successColor,
               shape: RoundedRectangleBorder(
@@ -525,7 +718,7 @@ class _TaskBreakdownScreenState extends State<TaskBreakdownScreen> {
   String _calculateTotalTime() {
     int totalMinutes = 0;
     for (var task in _tasks) {
-      final duration = task['duration'] as String;
+      final duration = task.duration;
       if (duration.contains('hour')) {
         final hours = int.tryParse(duration.split(' ')[0]) ?? 0;
         totalMinutes += hours * 60;

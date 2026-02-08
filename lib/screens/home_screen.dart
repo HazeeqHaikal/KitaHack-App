@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/widgets/custom_buttons.dart';
 import 'package:due/widgets/glass_container.dart';
@@ -6,133 +7,52 @@ import 'package:due/widgets/bottom_nav_bar.dart';
 import 'package:due/models/course_info.dart';
 import 'package:due/models/academic_event.dart';
 import 'package:due/utils/date_formatter.dart';
-import 'package:due/services/storage_service.dart';
+import 'package:due/providers/app_providers.dart';
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  final StorageService _storageService = StorageService();
-  List<CourseInfo> _courses = [];
-  List<Map<String, dynamic>> _upcomingEvents = [];
-  Map<String, int> _statistics = {
-    'totalCourses': 0,
-    'totalEvents': 0,
-    'weeklyEvents': 0,
-    'highPriorityEvents': 0,
-  };
-  bool _isLoading = true;
+class _HomeScreenState extends ConsumerState<HomeScreen>
+    with AutomaticKeepAliveClientMixin {
+  bool _isRefreshing = false;
 
   @override
-  void initState() {
-    super.initState();
-    _loadData();
-  }
+  bool get wantKeepAlive => true;
 
-  Future<void> _loadData() async {
+  Future<void> _handleRefresh() async {
+    if (_isRefreshing) return;
+
     setState(() {
-      _isLoading = true;
+      _isRefreshing = true;
     });
 
     try {
-      // Sync from cloud first if signed in
-      await _storageService.syncFromCloud();
-
-      final courses = await _storageService.getAllCourses();
-      final upcomingEvents = await _storageService.getUpcomingEvents(limit: 5);
-      final statistics = await _storageService.getStatistics();
-
-      setState(() {
-        _courses = courses;
-        _upcomingEvents = upcomingEvents;
-        _statistics = statistics;
-        _isLoading = false;
-      });
+      // Sync from cloud and refresh courses
+      final storageService = ref.read(storageServiceProvider);
+      await storageService.syncFromCloud();
+      await ref.read(coursesProvider.notifier).refresh();
     } catch (e) {
-      print('Error loading data: $e');
+      print('Error refreshing data: $e');
+    } finally {
       setState(() {
-        _isLoading = false;
+        _isRefreshing = false;
       });
     }
-  }
-
-  /// Calculate workload distribution for the next 6 weeks
-  List<Map<String, dynamic>> _calculateWeeklyWorkload() {
-    final now = DateTime.now();
-    final List<Map<String, dynamic>> weeklyData = [];
-
-    // Get all events from all courses
-    final allEvents = <AcademicEvent>[];
-    for (var course in _courses) {
-      allEvents.addAll(course.events);
-    }
-
-    // Calculate data for next 6 weeks
-    for (int weekIndex = 0; weekIndex < 6; weekIndex++) {
-      final weekStart = now.add(Duration(days: weekIndex * 7));
-      final weekEnd = weekStart.add(const Duration(days: 7));
-
-      // Count events in this week
-      final eventsInWeek = allEvents.where((event) {
-        final dueDate = event.dueDate;
-        return dueDate.isAfter(weekStart) && dueDate.isBefore(weekEnd);
-      }).toList();
-
-      // Calculate total workload weight (sum of weightages)
-      double totalWeight = 0;
-      int highPriorityCount = 0;
-
-      for (var event in eventsInWeek) {
-        // Parse weightage string (e.g., "20%" or "20") to double
-        if (event.weightage != null) {
-          final weight =
-              double.tryParse(event.weightage!.replaceAll('%', '')) ?? 0;
-          totalWeight += weight;
-        }
-        if (event.priority == EventPriority.high) {
-          highPriorityCount++;
-        }
-      }
-
-      // Determine intensity level
-      String intensity;
-      Color color;
-      if (totalWeight >= 60 || eventsInWeek.length >= 5) {
-        intensity = 'Heavy';
-        color = AppConstants.errorColor;
-      } else if (totalWeight >= 30 || eventsInWeek.length >= 3) {
-        intensity = 'Medium';
-        color = AppConstants.warningColor;
-      } else if (eventsInWeek.isNotEmpty) {
-        intensity = 'Light';
-        color = AppConstants.successColor;
-      } else {
-        intensity = 'Free';
-        color = AppConstants.textSecondary.withOpacity(0.3);
-      }
-
-      weeklyData.add({
-        'weekNumber': weekIndex + 1,
-        'weekStart': weekStart,
-        'weekEnd': weekEnd,
-        'eventCount': eventsInWeek.length,
-        'highPriorityCount': highPriorityCount,
-        'totalWeight': totalWeight,
-        'intensity': intensity,
-        'color': color,
-        'events': eventsInWeek,
-      });
-    }
-
-    return weeklyData;
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
+
+    // Watch providers for reactive updates
+    final coursesAsync = ref.watch(coursesProvider);
+    final stats = ref.watch(coursesStatsProvider);
+    final workloadData = ref.watch(workloadHeatmapProvider);
+
     return Scaffold(
       // Ensure the background gradient covers the entire scaffold
       body: Container(
@@ -193,85 +113,103 @@ class _HomeScreenState extends State<HomeScreen> {
 
               // Main content
               Expanded(
-                child: _isLoading
-                    ? const Center(
-                        child: CircularProgressIndicator(
-                          color: AppConstants.secondaryColor,
-                        ),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: _loadData,
-                        color: AppConstants.secondaryColor,
-                        child: SingleChildScrollView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.all(AppConstants.spacingL),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              // Stats overview
-                              _buildStatsGrid(context),
-                              const SizedBox(height: AppConstants.spacingXL),
-                              // Workload Heat Map
-                              _buildSectionHeader(
-                                context,
-                                'Workload Overview',
-                                Icons.calendar_view_week,
-                              ),
-                              const SizedBox(height: AppConstants.spacingM),
-                              _buildWorkloadHeatMap(context),
-                              const SizedBox(height: AppConstants.spacingXL),
-                              // Upcoming deadlines section
-                              _buildSectionHeader(
-                                context,
-                                'Upcoming Deadlines',
-                                Icons.event,
-                              ),
-                              const SizedBox(height: AppConstants.spacingM),
-                              _buildUpcomingEvents(context),
-                              const SizedBox(height: AppConstants.spacingXL),
-                              // Your courses section
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  _buildSectionHeader(
-                                    context,
-                                    'Your Courses',
-                                    Icons.school,
-                                  ),
-                                  TextButton.icon(
-                                    onPressed: () async {
-                                      await Navigator.pushNamed(
-                                        context,
-                                        '/courses',
-                                      );
-                                      // Reload data when returning
-                                      _loadData();
-                                    },
-                                    icon: const Icon(
-                                      Icons.arrow_forward,
-                                      size: 16,
-                                      color: AppConstants.primaryColor,
-                                    ),
-                                    label: const Text(
-                                      'View All',
-                                      style: TextStyle(
-                                        color: AppConstants.primaryColor,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: AppConstants.spacingM),
-                              _buildCoursesList(context),
-                              const SizedBox(height: AppConstants.spacingXL),
-                              // Quick actions
-                              _buildActionButtons(context),
-                            ],
+                child: coursesAsync.when(
+                  loading: () => const Center(
+                    child: CircularProgressIndicator(
+                      color: AppConstants.secondaryColor,
+                    ),
+                  ),
+                  error: (error, stack) => Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Error loading data: $error',
+                          style: const TextStyle(
+                            color: AppConstants.errorColor,
                           ),
                         ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _handleRefresh,
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  data: (courses) => RefreshIndicator(
+                    onRefresh: _handleRefresh,
+                    color: AppConstants.secondaryColor,
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(AppConstants.spacingL),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Stats overview
+                          _buildStatsGrid(context, stats),
+                          const SizedBox(height: AppConstants.spacingXL),
+                          // Workload Heat Map
+                          _buildSectionHeader(
+                            context,
+                            'Workload Overview',
+                            Icons.calendar_view_week,
+                          ),
+                          const SizedBox(height: AppConstants.spacingM),
+                          _buildWorkloadHeatMap(context, workloadData, courses),
+                          const SizedBox(height: AppConstants.spacingXL),
+                          // Upcoming deadlines section
+                          _buildSectionHeader(
+                            context,
+                            'Upcoming Deadlines',
+                            Icons.event,
+                          ),
+                          const SizedBox(height: AppConstants.spacingM),
+                          _buildUpcomingEvents(context, courses),
+                          const SizedBox(height: AppConstants.spacingXL),
+                          // Your courses section
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              _buildSectionHeader(
+                                context,
+                                'Your Courses',
+                                Icons.school,
+                              ),
+                              TextButton.icon(
+                                onPressed: () async {
+                                  await Navigator.pushNamed(
+                                    context,
+                                    '/courses',
+                                  );
+                                  // Reload data when returning
+                                  _handleRefresh();
+                                },
+                                icon: const Icon(
+                                  Icons.arrow_forward,
+                                  size: 16,
+                                  color: AppConstants.primaryColor,
+                                ),
+                                label: const Text(
+                                  'View All',
+                                  style: TextStyle(
+                                    color: AppConstants.primaryColor,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: AppConstants.spacingM),
+                          _buildCoursesList(context, courses),
+                          const SizedBox(height: AppConstants.spacingXL),
+                          // Quick actions
+                          _buildActionButtons(context),
+                        ],
                       ),
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
@@ -281,7 +219,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildStatsGrid(BuildContext context) {
+  Widget _buildStatsGrid(BuildContext context, CoursesStats stats) {
     return GridView.count(
       crossAxisCount: 2,
       shrinkWrap: true,
@@ -294,29 +232,29 @@ class _HomeScreenState extends State<HomeScreen> {
           context,
           icon: Icons.library_books,
           label: 'Active Courses',
-          value: _statistics['totalCourses'].toString(),
+          value: stats.totalCourses.toString(),
           color: AppConstants.primaryColor,
         ),
         _buildStatCard(
           context,
           icon: Icons.event_note,
-          label: 'Total Events',
-          value: _statistics['totalEvents'].toString(),
+          label: 'Completed',
+          value: stats.totalCompleted.toString(),
           color: AppConstants.secondaryColor,
         ),
         _buildStatCard(
           context,
           icon: Icons.alarm,
-          label: 'This Week',
-          value: _statistics['weeklyEvents'].toString(),
+          label: 'Upcoming',
+          value: stats.upcomingEvents.toString(),
           color: AppConstants.warningColor,
         ),
         _buildStatCard(
           context,
-          icon: Icons.priority_high,
-          label: 'High Priority',
-          value: _statistics['highPriorityEvents'].toString(),
-          color: AppConstants.errorColor,
+          icon: Icons.trending_up,
+          label: 'Avg Progress',
+          value: '${stats.averageProgress.toStringAsFixed(1)}%',
+          color: AppConstants.successColor,
         ),
       ],
     );
@@ -371,8 +309,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildWorkloadHeatMap(BuildContext context) {
-    if (_courses.isEmpty) {
+  Widget _buildWorkloadHeatMap(
+    BuildContext context,
+    Map<DateTime, double> workloadData,
+    List<CourseInfo> courses,
+  ) {
+    if (courses.isEmpty) {
       return GlassContainer(
         padding: const EdgeInsets.all(AppConstants.spacingL),
         child: const Column(
@@ -402,7 +344,35 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    final weeklyData = _calculateWeeklyWorkload();
+    // Convert workload map to list format for display
+    final weeklyDataList = workloadData.entries.map((entry) {
+      final weekStart = entry.key;
+      final totalWeight = entry.value;
+
+      // Determine intensity level
+      String intensity;
+      Color color;
+      if (totalWeight >= 60) {
+        intensity = 'Heavy';
+        color = AppConstants.errorColor;
+      } else if (totalWeight >= 30) {
+        intensity = 'Medium';
+        color = AppConstants.warningColor;
+      } else if (totalWeight > 0) {
+        intensity = 'Light';
+        color = AppConstants.successColor;
+      } else {
+        intensity = 'Free';
+        color = AppConstants.textSecondary.withOpacity(0.3);
+      }
+
+      return {
+        'weekStart': weekStart,
+        'totalWeight': totalWeight,
+        'intensity': intensity,
+        'color': color,
+      };
+    }).toList();
 
     return GlassContainer(
       padding: const EdgeInsets.all(AppConstants.spacingM),
@@ -436,9 +406,9 @@ class _HomeScreenState extends State<HomeScreen> {
               mainAxisSpacing: AppConstants.spacingM,
               childAspectRatio: 1.2,
             ),
-            itemCount: weeklyData.length,
+            itemCount: weeklyDataList.length,
             itemBuilder: (context, index) {
-              final weekData = weeklyData[index];
+              final weekData = weeklyDataList[index];
               return _buildWeekCell(context, weekData);
             },
           ),
@@ -484,101 +454,86 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildWeekCell(BuildContext context, Map<String, dynamic> weekData) {
     final weekStart = weekData['weekStart'] as DateTime;
-    final eventCount = weekData['eventCount'] as int;
-    final highPriorityCount = weekData['highPriorityCount'] as int;
+    final totalWeight = weekData['totalWeight'] as double;
     final intensity = weekData['intensity'] as String;
     final color = weekData['color'] as Color;
-    final events = weekData['events'] as List<AcademicEvent>;
 
-    return GestureDetector(
-      onTap: () {
-        if (eventCount > 0) {
-          _showWeekDetailsDialog(context, weekData);
-        }
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.15),
-          borderRadius: BorderRadius.circular(AppConstants.borderRadiusM),
-          border: Border.all(color: color.withOpacity(0.5), width: 2),
-          boxShadow: [
-            BoxShadow(
-              color: color.withOpacity(0.2),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(AppConstants.spacingS),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                'Week ${weekData['weekNumber']}',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                DateFormatter.formatShortDate(weekStart),
-                style: TextStyle(
-                  color: AppConstants.textSecondary,
-                  fontSize: 10,
-                ),
-              ),
-              const SizedBox(height: 4),
-              if (eventCount > 0) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
+    // Calculate week number from now
+    final now = DateTime.now();
+    final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+    final weekNumber =
+        weekStart
+                .difference(
+                  DateTime(
+                    startOfWeek.year,
+                    startOfWeek.month,
+                    startOfWeek.day,
                   ),
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '$eventCount',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                if (highPriorityCount > 0)
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.priority_high,
-                        size: 12,
-                        color: AppConstants.errorColor,
-                      ),
-                      Text(
-                        '$highPriorityCount',
-                        style: TextStyle(
-                          color: AppConstants.errorColor,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-              ] else
-                Text(
-                  intensity,
-                  style: TextStyle(
-                    color: AppConstants.textSecondary,
-                    fontSize: 11,
-                  ),
-                ),
-            ],
+                )
+                .inDays ~/
+            7 +
+        1;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(AppConstants.borderRadiusM),
+        border: Border.all(color: color.withOpacity(0.5), width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.2),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
           ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppConstants.spacingS),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'Week $weekNumber',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              DateFormatter.formatShortDate(weekStart),
+              style: const TextStyle(
+                color: AppConstants.textSecondary,
+                fontSize: 10,
+              ),
+            ),
+            const SizedBox(height: 4),
+            if (totalWeight > 0) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${totalWeight.toInt()}%',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ] else
+              Text(
+                intensity,
+                style: const TextStyle(
+                  color: AppConstants.textSecondary,
+                  fontSize: 11,
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -888,8 +843,33 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildUpcomingEvents(BuildContext context) {
-    if (_upcomingEvents.isEmpty) {
+  Widget _buildUpcomingEvents(BuildContext context, List<CourseInfo> courses) {
+    // Collect upcoming events from all courses
+    final now = DateTime.now();
+    final upcomingEvents = <Map<String, dynamic>>[];
+
+    for (var course in courses) {
+      for (var event in course.events) {
+        final eventDate = event.dueDate;
+        if (eventDate.isAfter(now) && !event.isOverdue) {
+          upcomingEvents.add({
+            'event': event,
+            'courseName': course.courseName,
+            'dueDate': eventDate,
+          });
+        }
+      }
+    }
+
+    // Sort by due date
+    upcomingEvents.sort(
+      (a, b) => (a['dueDate'] as DateTime).compareTo(b['dueDate'] as DateTime),
+    );
+
+    // Take only first 5
+    final displayEvents = upcomingEvents.take(5).toList();
+
+    if (displayEvents.isEmpty) {
       return GlassContainer(
         padding: const EdgeInsets.all(AppConstants.spacingL),
         child: const Column(
@@ -920,23 +900,28 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return Column(
-      children: _upcomingEvents
-          .map(
-            (eventData) => _buildEventItem(
-              context,
-              eventData['event'] as AcademicEvent,
-              eventData['courseName'] as String,
-            ),
-          )
-          .toList(),
+      children: displayEvents.asMap().entries.map((entry) {
+        final eventData = entry.value;
+        final event = eventData['event'] as AcademicEvent;
+        final courseName = eventData['courseName'] as String;
+        return _buildEventItem(
+          context,
+          event,
+          courseName,
+          key: ValueKey(
+            '${courseName}_${event.title}_${event.dueDate.toIso8601String()}',
+          ),
+        );
+      }).toList(),
     );
   }
 
   Widget _buildEventItem(
     BuildContext context,
     AcademicEvent event,
-    String courseName,
-  ) {
+    String courseName, {
+    Key? key,
+  }) {
     final daysUntil = event.daysUntilDue;
     final urgencyColor = daysUntil <= 3
         ? AppConstants.errorColor
@@ -945,6 +930,7 @@ class _HomeScreenState extends State<HomeScreen> {
         : AppConstants.successColor;
 
     return Container(
+      key: key,
       margin: const EdgeInsets.only(bottom: AppConstants.spacingM),
       child: GlassContainer(
         padding: const EdgeInsets.all(AppConstants.spacingM),
@@ -1004,6 +990,41 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                       ),
+                      if (event.calendarEventId != null) ...[
+                        const SizedBox(width: AppConstants.spacingXS),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppConstants.successColor.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: AppConstants.successColor.withOpacity(0.4),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.check_circle,
+                                size: 9,
+                                color: AppConstants.successColor,
+                              ),
+                              const SizedBox(width: 3),
+                              const Text(
+                                'Synced',
+                                style: TextStyle(
+                                  color: AppConstants.successColor,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       if (event.weightage != null) ...[
                         const SizedBox(width: AppConstants.spacingXS),
                         Text(
@@ -1064,8 +1085,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildCoursesList(BuildContext context) {
-    if (_courses.isEmpty) {
+  Widget _buildCoursesList(BuildContext context, List<CourseInfo> courses) {
+    if (courses.isEmpty) {
       return GlassContainer(
         padding: const EdgeInsets.all(AppConstants.spacingL),
         child: Column(
@@ -1112,17 +1133,22 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return Column(
-      children: _courses
-          .map((course) => _buildCourseCard(context, course))
-          .toList(),
+      children: courses.map((course) {
+        return _buildCourseCard(
+          context,
+          course,
+          key: ValueKey(course.courseCode),
+        );
+      }).toList(),
     );
   }
 
-  Widget _buildCourseCard(BuildContext context, CourseInfo course) {
+  Widget _buildCourseCard(BuildContext context, CourseInfo course, {Key? key}) {
     final upcomingCount = course.upcomingEvents.length;
     final highPriorityCount = course.highPriorityEvents.length;
 
     return Container(
+      key: key,
       margin: const EdgeInsets.only(bottom: AppConstants.spacingM),
       child: GlassContainer(
         hasShadow: true,

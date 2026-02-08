@@ -96,6 +96,45 @@ class EventCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
+                    // Synced badge if already in calendar
+                    if (event.calendarEventId != null) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppConstants.successColor.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(
+                            AppConstants.borderRadiusS,
+                          ),
+                          border: Border.all(
+                            color: AppConstants.successColor.withOpacity(0.4),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.check_circle,
+                              size: 10,
+                              color: AppConstants.successColor,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Synced',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: AppConstants.successColor,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 9,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
                     _buildTypeBadge(context, event.type, color),
                   ],
                 ),

@@ -6,6 +6,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 class UsageTrackingService {
   static const String _usageKey = 'api_usage_log';
   static const String _dailyLimitKey = 'api_daily_limit';
+  final SharedPreferences? _cachedPrefs;
+
+  /// Default constructor - fetches SharedPreferences on demand (legacy)
+  UsageTrackingService() : _cachedPrefs = null;
+
+  /// Constructor with cached SharedPreferences - eliminates repeated getInstance() calls
+  UsageTrackingService.withPrefs(SharedPreferences prefs)
+    : _cachedPrefs = prefs;
+
+  /// Get SharedPreferences instance - uses cached if available
+  Future<SharedPreferences> _getPrefs() async {
+    if (_cachedPrefs != null) {
+      return _cachedPrefs!;
+    }
+    return await SharedPreferences.getInstance();
+  }
 
   // Gemini 2.5 Pro pricing (as of Feb 2026)
   // Input: $3.50 per 1M tokens
@@ -20,7 +36,7 @@ class UsageTrackingService {
   /// Log an API call
   Future<void> logApiCall(String type) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _getPrefs();
       final logs = await _getUsageLogs();
 
       final logEntry = {
@@ -48,7 +64,7 @@ class UsageTrackingService {
   /// Get all usage logs
   Future<List<Map<String, dynamic>>> _getUsageLogs() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _getPrefs();
       final logsJson = prefs.getString(_usageKey);
 
       if (logsJson == null || logsJson.isEmpty) {
@@ -170,20 +186,20 @@ class UsageTrackingService {
 
   /// Get daily limit
   Future<int> getDailyLimit() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _getPrefs();
     return prefs.getInt(_dailyLimitKey) ?? defaultDailyLimit;
   }
 
   /// Set daily limit
   Future<void> setDailyLimit(int limit) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _getPrefs();
     await prefs.setInt(_dailyLimitKey, limit);
   }
 
   /// Reset all usage statistics
   Future<void> resetTracking() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _getPrefs();
       await prefs.remove(_usageKey);
       print('Usage tracking reset successfully');
     } catch (e) {

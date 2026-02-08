@@ -1,8 +1,17 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:due/models/course_info.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:due/services/firebase_service.dart';
+
+/// Helper function for isolate-based JSON parsing (large course lists)
+List<CourseInfo> _parseCoursesJson(List<String> coursesJson) {
+  return coursesJson.map((jsonStr) {
+    final Map<String, dynamic> courseMap = json.decode(jsonStr);
+    return CourseInfo.fromJson(courseMap);
+  }).toList();
+}
 
 /// Service for local and cloud data persistence
 /// Stores courses locally (SharedPreferences) and syncs to cloud (Firestore)
@@ -10,11 +19,26 @@ class StorageService {
   static const String _coursesKey = 'saved_courses';
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseService _firebaseService = FirebaseService();
+  final SharedPreferences? _cachedPrefs;
+
+  /// Default constructor - fetches SharedPreferences on demand (legacy)
+  StorageService() : _cachedPrefs = null;
+
+  /// Constructor with cached SharedPreferences - eliminates repeated getInstance() calls
+  StorageService.withPrefs(SharedPreferences prefs) : _cachedPrefs = prefs;
+
+  /// Get SharedPreferences instance - uses cached if available
+  Future<SharedPreferences> _getPrefs() async {
+    if (_cachedPrefs != null) {
+      return _cachedPrefs!;
+    }
+    return await SharedPreferences.getInstance();
+  }
 
   /// Save a course to local storage
   Future<void> saveCourse(CourseInfo course) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _getPrefs();
       final courses = await getAllCourses();
 
       // Check if course already exists (by courseCode or courseName)
@@ -51,13 +75,19 @@ class StorageService {
   /// Get all saved courses
   Future<List<CourseInfo>> getAllCourses() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _getPrefs();
       final coursesJson = prefs.getStringList(_coursesKey) ?? [];
 
-      final courses = coursesJson.map((jsonStr) {
-        final Map<String, dynamic> courseMap = json.decode(jsonStr);
-        return CourseInfo.fromJson(courseMap);
-      }).toList();
+      // Use compute() for large lists (>10 courses) to avoid UI jank
+      final List<CourseInfo> courses;
+      if (coursesJson.length > 10) {
+        courses = await compute(_parseCoursesJson, coursesJson);
+      } else {
+        courses = coursesJson.map((jsonStr) {
+          final Map<String, dynamic> courseMap = json.decode(jsonStr);
+          return CourseInfo.fromJson(courseMap);
+        }).toList();
+      }
 
       print('Loaded ${courses.length} courses from storage');
       return courses;
@@ -84,7 +114,7 @@ class StorageService {
   /// Delete a course
   Future<void> deleteCourse(String courseCode) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _getPrefs();
       final courses = await getAllCourses();
 
       courses.removeWhere((c) => c.courseCode == courseCode);
@@ -104,7 +134,7 @@ class StorageService {
   /// Clear all saved courses from local and cloud storage
   Future<void> clearAllCourses() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _getPrefs();
       await prefs.remove(_coursesKey);
       print('Cleared all courses from local storage');
 
@@ -238,6 +268,8 @@ class StorageService {
           .collection('users')
           .doc(userId)
           .collection('courses')
+          .orderBy('courseName')
+          .limit(100) // Limit to 100 courses for performance
           .get();
 
       if (snapshot.docs.isEmpty) {
@@ -267,7 +299,7 @@ class StorageService {
 
       if (syncedCount > 0) {
         // Save merged courses to local storage
-        final prefs = await SharedPreferences.getInstance();
+        final prefs = await _getPrefs();
         final coursesJson = localCourses
             .map((c) => json.encode(c.toJson()))
             .toList();

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/widgets/glass_container.dart';
 import 'package:due/widgets/bottom_nav_bar.dart';
@@ -8,23 +9,25 @@ import 'package:due/services/calendar_service.dart';
 import 'package:due/services/usage_tracking_service.dart';
 import 'package:due/services/response_cache_service.dart';
 import 'package:due/config/api_config.dart';
+import 'package:due/providers/app_providers.dart';
 
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends ConsumerState<SettingsScreen>
+    with AutomaticKeepAliveClientMixin {
   final _firebaseService = FirebaseService();
-  final _storageService = StorageService();
   final _calendarService = CalendarService();
-  final _usageTracking = UsageTrackingService();
-  final _responseCache = ResponseCacheService();
 
   Map<String, dynamic>? _usageSummary;
   bool _isLoadingUsage = true;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -39,7 +42,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     try {
-      final summary = await _usageTracking.getUsageSummary();
+      final prefs = ref.read(sharedPreferencesProvider);
+      final usageTracking = UsageTrackingService.withPrefs(prefs);
+      final summary = await usageTracking.getUsageSummary();
       setState(() {
         _usageSummary = summary;
         _isLoadingUsage = false;
@@ -62,6 +67,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -395,7 +402,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
 
               try {
-                await _storageService.clearAllCourses();
+                final storageService = ref.read(storageServiceProvider);
+                await storageService.clearAllCourses();
 
                 if (!context.mounted) return;
                 Navigator.pop(context); // Dismiss loading
@@ -717,7 +725,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: () async {
               Navigator.pop(context);
               try {
-                await _responseCache.clearCache();
+                final prefs = ref.read(sharedPreferencesProvider);
+                final responseCache = ResponseCacheService.withPrefs(prefs);
+                await responseCache.clearCache();
                 if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -770,7 +780,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: () async {
               Navigator.pop(context);
               try {
-                await _usageTracking.resetTracking();
+                final prefs = ref.read(sharedPreferencesProvider);
+                final usageTracking = UsageTrackingService.withPrefs(prefs);
+                await usageTracking.resetTracking();
                 await _loadUsageStats();
                 if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
