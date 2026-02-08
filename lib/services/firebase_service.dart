@@ -53,7 +53,12 @@ class FirebaseService {
     try {
       final fileName = path.basename(file.path);
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final userPath = userId ?? 'anonymous';
+
+      if (userId == null || userId.isEmpty) {
+        throw Exception('User must be signed in to upload files');
+      }
+
+      final userPath = userId;
 
       // Create unique file path
       final filePath =
@@ -99,93 +104,6 @@ class FirebaseService {
     }
   }
 
-  /// Sign in anonymously for basic file storage
-  /// This allows users to use the app without creating an account
-  Future<User?> signInAnonymously() async {
-    if (!_initialized) {
-      throw Exception('Firebase not initialized');
-    }
-
-    try {
-      final userCredential = await auth.signInAnonymously();
-      print('Signed in anonymously: ${userCredential.user?.uid}');
-      return userCredential.user;
-    } catch (e) {
-      print('Error signing in anonymously: $e');
-      throw Exception('Failed to sign in anonymously: $e');
-    }
-  }
-
-  /// Sign in with email and password
-  Future<User?> signInWithEmail(String email, String password) async {
-    if (!_initialized) {
-      throw Exception('Firebase not initialized');
-    }
-
-    try {
-      final userCredential = await auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      print('Signed in with email: ${userCredential.user?.email}');
-      return userCredential.user;
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'user-not-found') {
-        throw Exception('No user found with this email');
-      } else if (e.code == 'wrong-password') {
-        throw Exception('Wrong password provided');
-      } else if (e.code == 'invalid-email') {
-        throw Exception('Invalid email address');
-      } else if (e.code == 'user-disabled') {
-        throw Exception('This account has been disabled');
-      } else {
-        throw Exception(e.message ?? 'Login failed');
-      }
-    } catch (e) {
-      print('Error signing in with email: $e');
-      throw Exception('Failed to sign in: $e');
-    }
-  }
-
-  /// Register with email and password
-  Future<User?> registerWithEmail(
-    String email,
-    String password, {
-    String? displayName,
-  }) async {
-    if (!_initialized) {
-      throw Exception('Firebase not initialized');
-    }
-
-    try {
-      final userCredential = await auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-
-      // Update display name if provided
-      if (displayName != null && displayName.isNotEmpty) {
-        await userCredential.user?.updateDisplayName(displayName);
-      }
-
-      print('Registered user: ${userCredential.user?.email}');
-      return userCredential.user;
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'weak-password') {
-        throw Exception('The password provided is too weak');
-      } else if (e.code == 'email-already-in-use') {
-        throw Exception('An account already exists with this email');
-      } else if (e.code == 'invalid-email') {
-        throw Exception('Invalid email address');
-      } else {
-        throw Exception(e.message ?? 'Registration failed');
-      }
-    } catch (e) {
-      print('Error registering user: $e');
-      throw Exception('Failed to register: $e');
-    }
-  }
-
   /// Get GoogleSignIn instance for calendar sync
   GoogleSignIn? get googleSignIn => _googleSignIn;
 
@@ -221,68 +139,6 @@ class FirebaseService {
     } catch (e) {
       print('Error signing in with Google: $e');
       throw Exception('Google sign-in failed: $e');
-    }
-  }
-
-  /// Send password reset email
-  Future<void> sendPasswordResetEmail(String email) async {
-    if (!_initialized) {
-      throw Exception('Firebase not initialized');
-    }
-
-    try {
-      await auth.sendPasswordResetEmail(email: email);
-      print('Password reset email sent to: $email');
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'user-not-found') {
-        throw Exception('No user found with this email');
-      } else if (e.code == 'invalid-email') {
-        throw Exception('Invalid email address');
-      } else {
-        throw Exception(e.message ?? 'Failed to send reset email');
-      }
-    } catch (e) {
-      print('Error sending password reset email: $e');
-      throw Exception('Failed to send reset email: $e');
-    }
-  }
-
-  /// Change password for current user
-  Future<void> changePassword(
-    String currentPassword,
-    String newPassword,
-  ) async {
-    if (!_initialized) {
-      throw Exception('Firebase not initialized');
-    }
-
-    final user = auth.currentUser;
-    if (user == null) {
-      throw Exception('No user signed in');
-    }
-
-    try {
-      // Re-authenticate user before changing password
-      final credential = EmailAuthProvider.credential(
-        email: user.email!,
-        password: currentPassword,
-      );
-      await user.reauthenticateWithCredential(credential);
-
-      // Change password
-      await user.updatePassword(newPassword);
-      print('Password changed successfully');
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'wrong-password') {
-        throw Exception('Current password is incorrect');
-      } else if (e.code == 'weak-password') {
-        throw Exception('New password is too weak');
-      } else {
-        throw Exception(e.message ?? 'Failed to change password');
-      }
-    } catch (e) {
-      print('Error changing password: $e');
-      throw Exception('Failed to change password: $e');
     }
   }
 

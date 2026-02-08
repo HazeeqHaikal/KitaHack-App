@@ -17,6 +17,11 @@ class DateFormatter {
     return DateFormat('dd/MM/yyyy').format(date);
   }
 
+  /// Format date as "Feb 15" (for compact displays)
+  static String formatShortDate(DateTime date) {
+    return DateFormat('MMM dd').format(date);
+  }
+
   /// Format time as "2:30 PM"
   static String formatTime(DateTime date) {
     return DateFormat('h:mm a').format(date);

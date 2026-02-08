@@ -5,6 +5,7 @@ import 'package:due/utils/constants.dart';
 import 'package:due/widgets/custom_buttons.dart';
 import 'package:due/widgets/info_banner.dart';
 import 'package:due/widgets/glass_container.dart';
+import 'package:due/widgets/bottom_nav_bar.dart';
 import 'package:due/services/gemini_service.dart';
 import 'package:due/services/firebase_service.dart';
 import 'package:due/services/storage_service.dart';
@@ -264,6 +265,7 @@ class _UploadScreenState extends State<UploadScreen>
           ),
         ),
       ),
+      bottomNavigationBar: const BottomNavBar(currentIndex: 2),
     );
   }
 

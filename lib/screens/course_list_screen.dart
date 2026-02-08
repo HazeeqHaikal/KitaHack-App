@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/widgets/glass_container.dart';
+import 'package:due/widgets/bottom_nav_bar.dart';
 import 'package:due/models/course_info.dart';
 import 'package:due/services/storage_service.dart';
 
@@ -78,6 +79,7 @@ class _CourseListScreenState extends State<CourseListScreen> {
                 ),
         ),
       ),
+      bottomNavigationBar: const BottomNavBar(currentIndex: 1),
     );
   }
 

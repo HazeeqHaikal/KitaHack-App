@@ -5,6 +5,7 @@ import 'package:due/utils/constants.dart';
 import 'package:due/widgets/custom_buttons.dart';
 import 'package:due/widgets/info_banner.dart';
 import 'package:due/widgets/glass_container.dart';
+import 'package:due/widgets/bottom_nav_bar.dart';
 import 'package:due/services/calendar_service.dart';
 import 'package:due/services/storage_service.dart';
 import 'package:googleapis/calendar/v3.dart' as calendar;
@@ -547,6 +548,7 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
               : _buildSyncConfigurationView(events),
         ),
       ),
+      bottomNavigationBar: const BottomNavBar(currentIndex: 3),
     );
   }
 
