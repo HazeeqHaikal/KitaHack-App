@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/widgets/glass_container.dart';
 import 'package:due/services/firebase_service.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -165,7 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           else
                             ElevatedButton.icon(
                               onPressed: _loginWithGoogle,
-                              icon: const Icon(Icons.g_mobiledata, size: 32),
+                              icon: const FaIcon(FontAwesomeIcons.google, size: 20),
                               label: const Text(
                                 'Continue with Google',
                                 style: TextStyle(fontSize: 16),

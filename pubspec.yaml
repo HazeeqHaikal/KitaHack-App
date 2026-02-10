@@ -13,6 +13,7 @@ dependencies:
 
   # UI & Icons
   cupertino_icons: ^1.0.8
+  font_awesome_flutter: ^10.7.0
   
   # File Handling
   file_picker: ^8.1.4
