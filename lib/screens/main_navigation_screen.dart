@@ -3,7 +3,7 @@ import 'package:due/utils/constants.dart';
 import 'package:due/screens/home_screen.dart';
 import 'package:due/screens/course_list_screen.dart';
 import 'package:due/screens/upload_screen.dart';
-import 'package:due/screens/calendar_sync_screen.dart';
+import 'package:due/screens/calendar_view_screen.dart';
 import 'package:due/screens/settings_screen.dart';
 
 /// Main navigation screen with bottom navigation bar
@@ -24,7 +24,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     HomeScreen(),
     CourseListScreen(),
     UploadScreen(),
-    CalendarSyncScreen(),
+    CalendarViewScreen(),
     SettingsScreen(),
   ];
 
@@ -62,7 +62,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         controller: _pageController,
         onPageChanged: _onPageChanged,
         physics: const NeverScrollableScrollPhysics(), // Disable swipe
-        children: _screens,
+        children: _screens.map((screen) {
+          // Wrap each screen in RepaintBoundary for better performance
+          return RepaintBoundary(child: screen);
+        }).toList(),
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(

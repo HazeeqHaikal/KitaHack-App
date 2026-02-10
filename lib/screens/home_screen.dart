@@ -792,28 +792,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   Widget _buildActionButtons(BuildContext context) {
     return Column(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: SecondaryButton(
-                text: 'Study Allocator',
-                icon: Icons.schedule,
-                onPressed: () {
-                  Navigator.pushNamed(context, '/study-allocator');
-                },
-              ),
-            ),
-            const SizedBox(width: AppConstants.spacingM),
-            Expanded(
-              child: SecondaryButton(
-                text: 'Task Breakdown',
-                icon: Icons.assignment,
-                onPressed: () {
-                  Navigator.pushNamed(context, '/task-breakdown');
-                },
-              ),
-            ),
-          ],
+        SecondaryButton(
+          text: 'Sync to Calendar',
+          icon: Icons.sync,
+          onPressed: () {
+            Navigator.pushNamed(context, '/calendar-sync');
+          },
         ),
         const SizedBox(height: AppConstants.spacingM),
         SecondaryButton(

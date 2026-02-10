@@ -313,42 +313,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           ),
           TextButton(
             onPressed: () async {
-              Navigator.pop(context);
-
-              // Show loading indicator
-              if (!context.mounted) return;
-              showDialog(
-                context: context,
-                barrierDismissible: false,
-                builder: (context) => const Center(
-                  child: CircularProgressIndicator(
-                    color: AppConstants.primaryColor,
-                  ),
-                ),
-              );
+              Navigator.pop(context); // Close dialog immediately
 
               try {
-                // Sign out using Firebase service
+                // Sign out (optimized - should be fast)
                 await _firebaseService.signOut();
 
-                // Navigate to onboarding
+                // Navigate to login - auth state wrapper will handle this
+                // but we'll do it explicitly for better UX
                 if (!context.mounted) return;
-                Navigator.pop(context); // Dismiss loading
                 Navigator.pushNamedAndRemoveUntil(
                   context,
-                  '/onboarding',
+                  '/login',
                   (route) => false,
                 );
               } catch (e) {
-                // Dismiss loading
+                print('Sign out error: $e');
+                // Even if there's an error, try to navigate to login
+                // since we want to sign out the user anyway
                 if (!context.mounted) return;
-                Navigator.pop(context);
+                Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  '/login',
+                  (route) => false,
+                );
 
-                // Show error
+                // Show error briefly
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Sign out failed: $e'),
-                    backgroundColor: AppConstants.errorColor,
+                    content: Text('Sign out completed with warnings'),
+                    backgroundColor: AppConstants.warningColor,
+                    duration: const Duration(seconds: 2),
                   ),
                 );
               }

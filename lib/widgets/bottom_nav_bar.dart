@@ -46,10 +46,10 @@ class BottomNavBar extends StatelessWidget {
               _buildCenterUploadButton(context),
               _buildNavItem(
                 context: context,
-                icon: Icons.search_rounded,
-                label: 'Resources',
+                icon: Icons.calendar_month_rounded,
+                label: 'Calendar',
                 index: 3,
-                route: '/resource-finder',
+                route: '/calendar',
               ),
               _buildNavItem(
                 context: context,

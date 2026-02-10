@@ -17,17 +17,61 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await FirebaseService().signInWithGoogle();
+      final firebaseService = FirebaseService();
+
+      // Check if auth is available
+      if (!firebaseService.isAuthAvailable) {
+        throw Exception(
+          'Authentication service is not ready. Please restart the app.',
+        );
+      }
+
+      await firebaseService.signInWithGoogle();
 
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/home');
       }
     } catch (e) {
       if (mounted) {
+        String errorMessage = 'Sign-in failed';
+        bool showRetry = false;
+
+        if (e.toString().contains('canceled')) {
+          errorMessage = 'Sign-in was canceled';
+        } else if (e.toString().contains('not initialized') ||
+            e.toString().contains('not ready')) {
+          errorMessage = 'App is still starting. Please wait and try again.';
+          showRetry = true;
+        } else if (e.toString().contains('network') ||
+            e.toString().contains('internet') ||
+            e.toString().contains('connection')) {
+          errorMessage =
+              'Network error. Please check your internet connection.';
+          showRetry = true;
+        } else if (e.toString().contains('api-not-enabled')) {
+          errorMessage =
+              'Google Sign-In is not properly configured. Please contact support.';
+        } else {
+          errorMessage = e
+              .toString()
+              .replaceAll('Exception: ', '')
+              .replaceAll('Error: ', '');
+          // Show retry for most errors
+          showRetry = !e.toString().contains('canceled');
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Google sign-in failed: ${e.toString()}'),
+            content: Text(errorMessage),
             backgroundColor: AppConstants.errorColor,
+            duration: const Duration(seconds: 5),
+            action: showRetry
+                ? SnackBarAction(
+                    label: 'Retry',
+                    textColor: Colors.white,
+                    onPressed: _loginWithGoogle,
+                  )
+                : null,
           ),
         );
       }

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:due/utils/constants.dart';
+import 'package:due/utils/performance_optimizer.dart';
 import 'package:due/widgets/custom_buttons.dart';
 import 'package:due/widgets/info_banner.dart';
 import 'package:due/widgets/glass_container.dart';
@@ -11,6 +12,7 @@ import 'package:due/services/firebase_service.dart';
 import 'package:due/services/storage_service.dart';
 import 'package:due/services/response_cache_service.dart';
 import 'package:due/services/usage_tracking_service.dart';
+import 'package:due/screens/result_screen.dart';
 import 'package:due/config/api_config.dart';
 
 class UploadScreen extends StatefulWidget {
@@ -91,6 +93,9 @@ class _UploadScreenState extends State<UploadScreen>
           _fileName = file.name;
           _fileType = file.extension;
         });
+
+        // Precache result screen for faster navigation
+        PerformanceOptimizer.precacheRoute(context, () => const ResultScreen());
 
         // Check if cache exists for this file
         if (ApiConfig.enableResponseCache) {
@@ -272,22 +277,28 @@ class _UploadScreenState extends State<UploadScreen>
   Widget _buildHeaderSection() {
     return Column(
       children: [
-        Container(
-          padding: const EdgeInsets.all(AppConstants.spacingL),
-          decoration: BoxDecoration(
-            color: AppConstants.primaryColor.withOpacity(0.1),
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: AppConstants.primaryColor.withOpacity(0.2),
-                blurRadius: 20,
+        Hero(
+          tag: 'course_icon_hero',
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.all(AppConstants.spacingL),
+              decoration: BoxDecoration(
+                color: AppConstants.primaryColor.withOpacity(0.1),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: AppConstants.primaryColor.withOpacity(0.2),
+                    blurRadius: 20,
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: Icon(
-            Icons.cloud_upload_outlined,
-            size: 60,
-            color: AppConstants.primaryColor,
+              child: Icon(
+                Icons.cloud_upload_outlined,
+                size: 60,
+                color: AppConstants.primaryColor,
+              ),
+            ),
           ),
         ),
         const SizedBox(height: AppConstants.spacingM),

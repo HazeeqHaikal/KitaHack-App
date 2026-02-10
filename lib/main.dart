@@ -9,6 +9,7 @@ import 'package:due/screens/home_screen.dart';
 import 'package:due/screens/upload_screen.dart';
 import 'package:due/screens/result_screen.dart';
 import 'package:due/screens/calendar_sync_screen.dart';
+import 'package:due/screens/calendar_view_screen.dart';
 import 'package:due/screens/course_list_screen.dart';
 import 'package:due/screens/settings_screen.dart';
 import 'package:due/screens/event_detail_screen.dart';
@@ -16,9 +17,11 @@ import 'package:due/screens/task_breakdown_screen.dart';
 import 'package:due/screens/study_allocator_screen.dart';
 import 'package:due/screens/resource_finder_screen.dart';
 import 'package:due/utils/constants.dart';
+import 'package:due/utils/route_transitions.dart';
 import 'package:due/services/firebase_service.dart';
 import 'package:due/services/calendar_service.dart';
 import 'package:due/providers/app_providers.dart';
+import 'package:due/widgets/auth_state_wrapper.dart';
 
 void main() async {
   // Ensure Flutter bindings are initialized
@@ -79,6 +82,8 @@ class DueApp extends StatelessWidget {
     return MaterialApp(
       title: 'Due - Your Academic Timeline, Automated',
       debugShowCheckedModeBanner: false,
+      // Enable performance overlay in debug mode (can be toggled)
+      // showPerformanceOverlay: false,
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: AppConstants.backgroundStart,
@@ -90,6 +95,14 @@ class DueApp extends StatelessWidget {
         ),
         useMaterial3: true,
         fontFamily: 'Roboto', // Or preferred font
+        // Enable smooth animations
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+            TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
+          },
+        ),
         // Text Theme Overrides for Dark Mode
         textTheme: const TextTheme(
           headlineSmall: TextStyle(
@@ -164,20 +177,57 @@ class DueApp extends StatelessWidget {
       ),
       // Start with splash screen that determines initial route
       home: const SplashScreen(),
-      routes: {
-        '/onboarding': (context) => const OnboardingScreen(),
-        '/login': (context) => const LoginScreen(),
-        '/': (context) => const HomeScreen(),
-        '/home': (context) => const HomeScreen(),
-        '/upload': (context) => const UploadScreen(),
-        '/courses': (context) => const CourseListScreen(),
-        '/result': (context) => const ResultScreen(),
-        '/calendar-sync': (context) => const CalendarSyncScreen(),
-        '/settings': (context) => const SettingsScreen(),
-        '/event-detail': (context) => const EventDetailScreen(),
-        '/task-breakdown': (context) => const TaskBreakdownScreen(),
-        '/study-allocator': (context) => const StudyAllocatorScreen(),
-        '/resource-finder': (context) => const ResourceFinderScreen(),
+      // Use onGenerateRoute for custom page transitions
+      onGenerateRoute: (settings) {
+        // Get the page widget based on route name
+        Widget page;
+        switch (settings.name) {
+          case '/onboarding':
+            page = const OnboardingScreen();
+            break;
+          case '/login':
+            page = const LoginScreen();
+            break;
+          case '/':
+          case '/home':
+            page = const AuthStateWrapper(child: HomeScreen());
+            break;
+          case '/upload':
+            page = const UploadScreen();
+            break;
+          case '/courses':
+            page = const CourseListScreen();
+            break;
+          case '/result':
+            page = const ResultScreen();
+            break;
+          case '/calendar':
+            page = const CalendarViewScreen();
+            break;
+          case '/calendar-sync':
+            page = const CalendarSyncScreen();
+            break;
+          case '/settings':
+            page = const SettingsScreen();
+            break;
+          case '/event-detail':
+            page = const EventDetailScreen();
+            break;
+          case '/task-breakdown':
+            page = const TaskBreakdownScreen();
+            break;
+          case '/study-allocator':
+            page = const StudyAllocatorScreen();
+            break;
+          case '/resource-finder':
+            page = const ResourceFinderScreen();
+            break;
+          default:
+            page = const AuthStateWrapper(child: HomeScreen());
+        }
+
+        // Return custom fade transition for all routes
+        return RouteTransitions.fadeTransition(page: page, settings: settings);
       },
     );
   }
@@ -192,19 +242,29 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  bool _isInitializing = true;
+  String _statusMessage = 'Initializing...';
+
   @override
   void initState() {
     super.initState();
-    _determineInitialRoute();
+    _initializeAndRoute();
   }
 
-  Future<void> _determineInitialRoute() async {
-    // Add a small delay for smooth transition
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    if (!mounted) return;
-
+  Future<void> _initializeAndRoute() async {
     try {
+      // Ensure Firebase is initialized before checking auth state
+      final firebaseService = FirebaseService();
+
+      setState(() {
+        _statusMessage = 'Checking authentication...';
+      });
+
+      // Wait a bit longer for Firebase to fully initialize (especially on first launch)
+      await Future.delayed(const Duration(milliseconds: 800));
+
+      if (!mounted) return;
+
       final prefs = await SharedPreferences.getInstance();
       final isFirstLaunch = prefs.getBool('isFirstLaunch') ?? true;
 
@@ -214,9 +274,17 @@ class _SplashScreenState extends State<SplashScreen> {
         if (!mounted) return;
         Navigator.pushReplacementNamed(context, '/onboarding');
       } else {
-        // Check if user is already signed in
-        final firebaseService = FirebaseService();
+        // Check if user is already signed in (Firebase persists auth state)
         final isSignedIn = firebaseService.isSignedIn;
+
+        if (!mounted) return;
+
+        setState(() {
+          _statusMessage = isSignedIn ? 'Welcome back!' : 'Loading...';
+        });
+
+        // Small delay for smooth UX
+        await Future.delayed(const Duration(milliseconds: 300));
 
         if (!mounted) return;
 
@@ -229,10 +297,16 @@ class _SplashScreenState extends State<SplashScreen> {
         }
       }
     } catch (e) {
-      print('Error determining initial route: $e');
-      // Fallback to onboarding on error
+      print('Error during initialization: $e');
+      // Fallback to login on error
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/onboarding');
+      Navigator.pushReplacementNamed(context, '/login');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isInitializing = false;
+        });
+      }
     }
   }
 
@@ -247,17 +321,17 @@ class _SplashScreenState extends State<SplashScreen> {
             colors: [AppConstants.backgroundStart, AppConstants.backgroundEnd],
           ),
         ),
-        child: const Center(
+        child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
+              const Icon(
                 Icons.calendar_today,
                 size: 80,
                 color: AppConstants.primaryColor,
               ),
-              SizedBox(height: 24),
-              Text(
+              const SizedBox(height: 24),
+              const Text(
                 'DUE',
                 style: TextStyle(
                   fontSize: 48,
@@ -266,17 +340,20 @@ class _SplashScreenState extends State<SplashScreen> {
                   letterSpacing: 4,
                 ),
               ),
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
               Text(
-                'Your Academic Timeline, Automated',
-                style: TextStyle(
+                _statusMessage,
+                style: const TextStyle(
                   fontSize: 14,
                   color: AppConstants.textSecondary,
                   letterSpacing: 1,
                 ),
               ),
-              SizedBox(height: 48),
-              CircularProgressIndicator(color: AppConstants.primaryColor),
+              const SizedBox(height: 48),
+              if (_isInitializing)
+                const CircularProgressIndicator(
+                  color: AppConstants.primaryColor,
+                ),
             ],
           ),
         ),

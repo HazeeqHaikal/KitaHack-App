@@ -300,10 +300,16 @@ class _ResultScreenState extends ConsumerState<ResultScreen>
                               ),
                               child: Row(
                                 children: [
-                                  const Icon(
-                                    Icons.school,
-                                    color: AppConstants.primaryColor,
-                                    size: 24,
+                                  Hero(
+                                    tag: 'course_icon_hero',
+                                    child: Material(
+                                      color: Colors.transparent,
+                                      child: const Icon(
+                                        Icons.school,
+                                        color: AppConstants.primaryColor,
+                                        size: 24,
+                                      ),
+                                    ),
                                   ),
                                   const SizedBox(width: AppConstants.spacingM),
                                   Expanded(
@@ -358,10 +364,16 @@ class _ResultScreenState extends ConsumerState<ResultScreen>
                                 ),
                                 child: Row(
                                   children: [
-                                    const Icon(
-                                      Icons.school,
-                                      color: AppConstants.primaryColor,
-                                      size: 24,
+                                    Hero(
+                                      tag: 'course_icon_hero',
+                                      child: Material(
+                                        color: Colors.transparent,
+                                        child: const Icon(
+                                          Icons.school,
+                                          color: AppConstants.primaryColor,
+                                          size: 24,
+                                        ),
+                                      ),
                                     ),
                                     const SizedBox(
                                       width: AppConstants.spacingM,
@@ -402,17 +414,19 @@ class _ResultScreenState extends ConsumerState<ResultScreen>
                               child: _buildFilterChips(),
                             );
                           } else {
-                            // Event cards
+                            // Event cards - wrap in RepaintBoundary for performance
                             final event = filtered[index - 2];
-                            return EventCard(
-                              event: event,
-                              showCheckbox: true,
-                              onSelectionChanged: (value) {
-                                setState(() {
-                                  event.isSelected = value ?? false;
-                                });
-                              },
-                              onTap: () => _showEventDetails(event),
+                            return RepaintBoundary(
+                              child: EventCard(
+                                event: event,
+                                showCheckbox: true,
+                                onSelectionChanged: (value) {
+                                  setState(() {
+                                    event.isSelected = value ?? false;
+                                  });
+                                },
+                                onTap: () => _showEventDetails(event),
+                              ),
                             );
                           }
                         },
