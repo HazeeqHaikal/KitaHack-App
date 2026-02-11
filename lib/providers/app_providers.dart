@@ -46,6 +46,9 @@ class CoursesNotifier extends StateNotifier<AsyncValue<List<CourseInfo>>> {
   Future<void> loadCourses() async {
     try {
       state = const AsyncValue.loading();
+      // Sync from Firestore first (if user is signed in)
+      await _storageService.syncFromCloud();
+      // Then load all courses (including synced ones)
       final courses = await _storageService.getAllCourses();
       state = AsyncValue.data(courses);
     } catch (error, stackTrace) {
