@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:due/services/firebase_service.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 /// Wrapper widget that listens to authentication state changes
 /// and redirects to login screen if user is unexpectedly signed out
@@ -25,16 +24,25 @@ class _AuthStateWrapperState extends State<AuthStateWrapper> {
   }
 
   void _listenToAuthChanges() {
-    _firebaseService.authStateChanges.listen((User? user) {
+    // Only listen to Firebase auth changes if Firebase is available
+    if (!_firebaseService.isAvailable) {
+      print('Firebase not available - auth state monitoring disabled');
+      return;
+    }
+
+    _firebaseService.authStateChanges.listen((user) {
       if (!mounted) return;
 
-      // If user was signed in but is now null (unexpected sign-out)
-      if (_wasSignedIn && user == null) {
+      // Check if user is actually signed in (including Google Sign-In)
+      final isSignedIn = _firebaseService.isSignedIn;
+
+      // If user was signed in but is now not signed in (unexpected sign-out)
+      if (_wasSignedIn && !isSignedIn) {
         print('User unexpectedly signed out - redirecting to login');
         _handleUnexpectedSignOut();
       }
 
-      _wasSignedIn = user != null;
+      _wasSignedIn = isSignedIn;
     });
   }
 
