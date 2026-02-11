@@ -209,34 +209,43 @@ class FirebaseService {
         throw Exception('Sign-in canceled by user');
       }
 
-      // Try to initialize Firebase if it failed earlier
+      print('Google Sign-In successful: ${googleUser.email}');
+
+      // Try to sign in to Firebase if available
       if (!_initialized) {
         print('Firebase not initialized, attempting to initialize now...');
-        final retrySuccess = await retryInitialization();
-
-        if (!retrySuccess) {
-          // Firebase still not working, sign out from Google and throw error
-          await _googleSignIn?.signOut();
-          throw Exception(
-            'Unable to complete sign-in. Please check your internet connection and try again.',
-          );
-        }
+        await retryInitialization();
       }
 
-      // Obtain the auth details from the request
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
+      // If Firebase is available, sign in to Firebase Auth
+      if (_initialized) {
+        try {
+          // Obtain the auth details from the request
+          final GoogleSignInAuthentication googleAuth =
+              await googleUser.authentication;
 
-      // Create a new credential
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
+          // Create a new credential
+          final credential = GoogleAuthProvider.credential(
+            accessToken: googleAuth.accessToken,
+            idToken: googleAuth.idToken,
+          );
 
-      // Sign in to Firebase with the Google credential
-      final userCredential = await auth.signInWithCredential(credential);
-      print('Signed in with Google: ${userCredential.user?.email}');
-      return userCredential.user;
+          // Sign in to Firebase with the Google credential
+          final userCredential = await auth.signInWithCredential(credential);
+          print('Signed in to Firebase: ${userCredential.user?.email}');
+          return userCredential.user;
+        } catch (firebaseError) {
+          print('Firebase sign-in failed: $firebaseError');
+          print('Continuing with Google Sign-In only (local storage mode)');
+          // Continue without Firebase - app will work with local storage
+        }
+      } else {
+        print('Firebase not available - app will use local storage only');
+      }
+
+      // Return null but allow app to continue with Google Sign-In
+      // The app will check isSignedIn which uses Google Sign-In state
+      return null;
     } catch (e) {
       print('Error signing in with Google: $e');
       // Sign out from Google to clean up state
@@ -275,7 +284,18 @@ class FirebaseService {
   User? get currentUser => _initialized ? auth.currentUser : null;
 
   /// Check if user is signed in
-  bool get isSignedIn => currentUser != null;
+  /// Returns true if either Firebase user exists OR Google user is signed in
+  bool get isSignedIn {
+    // Check Firebase user first (if available)
+    if (_initialized && auth.currentUser != null) {
+      return true;
+    }
+    // Fallback to Google Sign-In state (for web without Firebase)
+    if (_authInitialized && _googleSignIn?.currentUser != null) {
+      return true;
+    }
+    return false;
+  }
 
   /// Stream of auth state changes
   Stream<User?> get authStateChanges =>
