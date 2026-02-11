@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/utils/performance_optimizer.dart';
@@ -9,20 +10,20 @@ import 'package:due/widgets/glass_container.dart';
 import 'package:due/widgets/bottom_nav_bar.dart';
 import 'package:due/services/gemini_service.dart';
 import 'package:due/services/firebase_service.dart';
-import 'package:due/services/storage_service.dart';
 import 'package:due/services/response_cache_service.dart';
 import 'package:due/services/usage_tracking_service.dart';
 import 'package:due/screens/result_screen.dart';
 import 'package:due/config/api_config.dart';
+import 'package:due/providers/app_providers.dart';
 
-class UploadScreen extends StatefulWidget {
+class UploadScreen extends ConsumerStatefulWidget {
   const UploadScreen({super.key});
 
   @override
-  State<UploadScreen> createState() => _UploadScreenState();
+  ConsumerState<UploadScreen> createState() => _UploadScreenState();
 }
 
-class _UploadScreenState extends State<UploadScreen>
+class _UploadScreenState extends ConsumerState<UploadScreen>
     with SingleTickerProviderStateMixin {
   String? _fileName;
   String? _fileType;
@@ -34,7 +35,6 @@ class _UploadScreenState extends State<UploadScreen>
 
   final _geminiService = GeminiService();
   final _firebaseService = FirebaseService();
-  final _storageService = StorageService();
   final _responseCache = ResponseCacheService();
   final _usageTracking = UsageTrackingService();
 
@@ -144,13 +144,15 @@ class _UploadScreenState extends State<UploadScreen>
     });
 
     try {
+      String? downloadUrl;
+
       // Optional: Upload to Firebase Storage (if available)
       if (_firebaseService.isAvailable) {
         setState(() {
           _processingStatus = 'Uploading to secure storage...';
         });
 
-        await _firebaseService.uploadFile(
+        downloadUrl = await _firebaseService.uploadFile(
           _selectedFile!,
           userId: _firebaseService.currentUser?.uid,
         );
@@ -161,14 +163,19 @@ class _UploadScreenState extends State<UploadScreen>
         _processingStatus = 'Analyzing syllabus with AI...';
       });
 
-      final courseInfo = await _geminiService.analyzeSyllabus(_selectedFile!);
+      var courseInfo = await _geminiService.analyzeSyllabus(_selectedFile!);
 
-      // Save the course data to local storage
+      // Attach the file URL if available
+      if (downloadUrl != null) {
+        courseInfo = courseInfo.copyWith(sourceFileUrl: downloadUrl);
+      }
+
+      // Save the course data to local storage and notify all listeners
       setState(() {
         _processingStatus = 'Saving course data...';
       });
 
-      await _storageService.saveCourse(courseInfo);
+      await ref.read(coursesProvider.notifier).addCourse(courseInfo);
 
       if (!mounted) return;
 

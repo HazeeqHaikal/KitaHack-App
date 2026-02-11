@@ -61,7 +61,10 @@ class FirebaseService {
     // This allows authentication to work independently
     if (_googleSignIn == null) {
       try {
-        _googleSignIn = GoogleSignIn(scopes: ApiConfig.calendarScopes);
+        _googleSignIn = GoogleSignIn(
+          scopes: ApiConfig.calendarScopes,
+          clientId: ApiConfig.googleClientId, // Required for web
+        );
         _authInitialized = true;
         print('Google Sign-In initialized successfully');
       } catch (e) {
@@ -155,6 +158,34 @@ class FirebaseService {
       print('File deleted: $downloadUrl');
     } catch (e) {
       print('Error deleting file: $e');
+    }
+  }
+
+  /// Delete all files for the current user from Firebase Storage
+  Future<void> deleteAllUserFiles() async {
+    if (!_initialized) return;
+
+    final user = currentUser;
+    if (user == null) return;
+
+    try {
+      final userPath = '${ApiConfig.syllabusStoragePath}/${user.uid}';
+      print('Deleting all files in: $userPath');
+
+      final listResult = await storage.ref().child(userPath).listAll();
+
+      if (listResult.items.isEmpty) {
+        print('No files to delete');
+        return;
+      }
+
+      final futures = listResult.items.map((ref) => ref.delete());
+      await Future.wait(futures);
+
+      print('Deleted ${listResult.items.length} files from storage');
+    } catch (e) {
+      print('Error deleting all user files: $e');
+      // Verify if error is "object not found" which is fine (folder doesn't exist)
     }
   }
 

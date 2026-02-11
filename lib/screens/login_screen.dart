@@ -166,7 +166,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           else
                             ElevatedButton.icon(
                               onPressed: _loginWithGoogle,
-                              icon: const FaIcon(FontAwesomeIcons.google, size: 20),
+                              icon: const FaIcon(
+                                FontAwesomeIcons.google,
+                                size: 20,
+                              ),
                               label: const Text(
                                 'Continue with Google',
                                 style: TextStyle(fontSize: 16),

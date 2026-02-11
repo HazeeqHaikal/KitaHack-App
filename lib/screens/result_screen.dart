@@ -273,6 +273,30 @@ class _ResultScreenState extends ConsumerState<ResultScreen>
             onPressed: _showSortSheet,
             tooltip: 'Sort events',
           ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            tooltip: 'More options',
+            onSelected: (value) {
+              if (value == 'delete') {
+                _showDeleteCourseDialog();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete, color: AppConstants.errorColor),
+                    SizedBox(width: 8),
+                    Text(
+                      'Delete Course',
+                      style: TextStyle(color: AppConstants.errorColor),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ],
       ),
       body: Container(
@@ -667,5 +691,171 @@ class _ResultScreenState extends ConsumerState<ResultScreen>
 
   void _showEventDetails(AcademicEvent event) {
     Navigator.pushNamed(context, '/event-detail', arguments: event);
+  }
+
+  void _showDeleteCourseDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppConstants.backgroundEnd,
+        title: const Text(
+          'Delete Course?',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This will permanently delete "${_courseInfo?.courseCode}" and all its events from this device.',
+              style: const TextStyle(color: AppConstants.textSecondary),
+            ),
+            const SizedBox(height: 12),
+            if (syncedCount > 0)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppConstants.warningColor.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: AppConstants.warningColor.withOpacity(0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      color: AppConstants.warningColor,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '$syncedCount synced event${syncedCount > 1 ? 's' : ''} will be removed from Google Calendar',
+                        style: const TextStyle(
+                          color: AppConstants.warningColor,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppConstants.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context); // Close dialog
+              await _deleteCourse();
+            },
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: AppConstants.errorColor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteCourse() async {
+    if (_courseInfo == null) return;
+
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: AppConstants.primaryColor),
+            SizedBox(height: 16),
+            Text('Deleting course...', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      // Delete synced events from Google Calendar
+      final syncedEvents = _events
+          .where((e) => e.calendarEventId != null)
+          .toList();
+
+      if (syncedEvents.isNotEmpty) {
+        final calendarService = ref.read(calendarServiceProvider);
+
+        // Sign in if needed
+        if (!calendarService.isAuthenticated) {
+          try {
+            await calendarService.signIn();
+          } catch (e) {
+            print('Calendar sign-in failed: $e');
+            // Continue with local deletion even if calendar deletion fails
+          }
+        }
+
+        // Delete from calendar if authenticated
+        if (calendarService.isAuthenticated) {
+          try {
+            final calendars = await calendarService.getCalendars();
+            final primaryCalendar = calendars.firstWhere(
+              (cal) => cal.primary == true,
+              orElse: () => calendars.first,
+            );
+
+            await calendarService.deleteEventsFromCalendar(
+              syncedEvents,
+              primaryCalendar.id!,
+            );
+          } catch (e) {
+            print('Failed to delete calendar events: $e');
+            // Continue with local deletion even if calendar deletion fails
+          }
+        }
+      }
+
+      // Delete course from local storage via provider
+      await ref
+          .read(coursesProvider.notifier)
+          .deleteCourse(_courseInfo!.courseCode);
+
+      if (!mounted) return;
+      Navigator.pop(context); // Dismiss loading
+
+      if (!mounted) return;
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Course deleted successfully'),
+          backgroundColor: AppConstants.successColor,
+        ),
+      );
+
+      // Navigate back
+      Navigator.pop(context);
+    } catch (e) {
+      print('Error deleting course: $e');
+
+      if (!mounted) return;
+      Navigator.pop(context); // Dismiss loading
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to delete course: $e'),
+          backgroundColor: AppConstants.errorColor,
+        ),
+      );
+    }
   }
 }

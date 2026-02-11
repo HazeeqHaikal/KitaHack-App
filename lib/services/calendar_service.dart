@@ -92,7 +92,12 @@ class CalendarService {
   /// Get list of user's calendars
   Future<List<calendar.CalendarListEntry>> getCalendars() async {
     if (_calendarApi == null) {
-      throw Exception('Not authenticated. Please sign in first.');
+      // Try to initialize if authenticated
+      if (isAuthenticated) {
+        await _initializeCalendarApi();
+      } else {
+        throw Exception('Not authenticated. Please sign in first.');
+      }
     }
 
     try {

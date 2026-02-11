@@ -6,6 +6,7 @@ class CourseInfo {
   final String courseCode;
   final String? instructor;
   final String? semester;
+  final String? sourceFileUrl;
   final List<AcademicEvent> events;
 
   CourseInfo({
@@ -13,8 +14,28 @@ class CourseInfo {
     required this.courseCode,
     this.instructor,
     this.semester,
+    this.sourceFileUrl,
     required this.events,
   });
+
+  /// Create copy with updated fields
+  CourseInfo copyWith({
+    String? courseName,
+    String? courseCode,
+    String? instructor,
+    String? semester,
+    String? sourceFileUrl,
+    List<AcademicEvent>? events,
+  }) {
+    return CourseInfo(
+      courseName: courseName ?? this.courseName,
+      courseCode: courseCode ?? this.courseCode,
+      instructor: instructor ?? this.instructor,
+      semester: semester ?? this.semester,
+      sourceFileUrl: sourceFileUrl ?? this.sourceFileUrl,
+      events: events ?? this.events,
+    );
+  }
 
   /// Create from JSON (for Gemini API response)
   factory CourseInfo.fromJson(Map<String, dynamic> json) {
@@ -23,6 +44,7 @@ class CourseInfo {
       courseCode: json['courseCode'] ?? '',
       instructor: json['instructor'],
       semester: json['semester'],
+      sourceFileUrl: json['sourceFileUrl'],
       events:
           (json['events'] as List<dynamic>?)
               ?.map((e) => AcademicEvent.fromJson(e as Map<String, dynamic>))
@@ -38,6 +60,7 @@ class CourseInfo {
       'courseCode': courseCode,
       'instructor': instructor,
       'semester': semester,
+      'sourceFileUrl': sourceFileUrl,
       'events': events.map((e) => e.toJson()).toList(),
     };
   }

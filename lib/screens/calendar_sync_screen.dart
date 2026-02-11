@@ -43,14 +43,12 @@ class _CalendarSyncScreenState extends State<CalendarSyncScreen> {
     });
 
     // Automatically authenticate using existing Google Sign-In
-    // Since user is already logged in with Google, no need to ask again
-    if (!_calendarService.isAuthenticated) {
-      try {
-        await _calendarService.signIn();
-      } catch (e) {
-        print('Error auto-authenticating: $e');
-        _showError('Failed to connect to Google Calendar: $e');
-      }
+    // We call signIn() to ensure the Calendar API is initialized properly
+    try {
+      await _calendarService.signIn();
+    } catch (e) {
+      print('Error auto-authenticating: $e');
+      _showError('Failed to connect to Google Calendar: $e');
     }
 
     // Load calendars if authenticated

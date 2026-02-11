@@ -117,6 +117,28 @@ class StorageService {
       final prefs = await _getPrefs();
       final courses = await getAllCourses();
 
+      // Find the course to be deleted to check for associated file
+      final courseToDelete = courses.firstWhere(
+        (c) => c.courseCode == courseCode,
+        orElse: () => CourseInfo(
+          courseName: '',
+          courseCode: '',
+          events: [],
+        ), // detailed dummy
+      );
+
+      // If course has a source file, delete it from storage
+      if (courseToDelete.sourceFileUrl != null &&
+          courseToDelete.sourceFileUrl!.isNotEmpty) {
+        try {
+          await _firebaseService.deleteFile(courseToDelete.sourceFileUrl!);
+          print('Deleted associated source file');
+        } catch (e) {
+          print('Error deleting source file: $e');
+          // Continue with course deletion even if file deletion fails
+        }
+      }
+
       courses.removeWhere((c) => c.courseCode == courseCode);
 
       final coursesJson = courses.map((c) => json.encode(c.toJson())).toList();
@@ -131,15 +153,32 @@ class StorageService {
     }
   }
 
+  /// Delete cloud data only (Firestore and Storage)
+  Future<void> deleteCloudData() async {
+    try {
+      // 1. Delete all files in storage
+      await _firebaseService.deleteAllUserFiles();
+
+      // 2. Delete all courses in Firestore
+      await _clearCoursesFromCloud();
+
+      print('Successfully deleted all cloud data');
+    } catch (e) {
+      print('Error deleting cloud data: $e');
+      rethrow;
+    }
+  }
+
   /// Clear all saved courses from local and cloud storage
   Future<void> clearAllCourses() async {
     try {
+      // Clear cloud data first (more robust)
+      await deleteCloudData();
+
+      // Clear local storage
       final prefs = await _getPrefs();
       await prefs.remove(_coursesKey);
       print('Cleared all courses from local storage');
-
-      // Clear from cloud if user is signed in
-      await _clearCoursesFromCloud();
     } catch (e) {
       print('Error clearing courses: $e');
       rethrow;

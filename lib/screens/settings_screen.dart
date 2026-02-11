@@ -174,6 +174,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 ),
                 _buildSettingItem(
                   context,
+                  icon: Icons.cloud_off,
+                  title: 'Delete Cloud Data',
+                  subtitle: 'Delete courses & files from server only',
+                  onTap: () => _showDeleteCloudDataDialog(context),
+                ),
+                _buildSettingItem(
+                  context,
                   icon: Icons.event_busy,
                   title: 'Clean Up Calendar',
                   subtitle: 'Delete old Due events from Google Calendar',
@@ -402,19 +409,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 if (!context.mounted) return;
                 Navigator.pop(context); // Dismiss loading
 
+                if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('✅ All courses cleared successfully'),
                     backgroundColor: AppConstants.successColor,
                   ),
                 );
-
-                // Go back to home
-                Navigator.pop(context);
               } catch (e) {
                 if (!context.mounted) return;
                 Navigator.pop(context); // Dismiss loading
 
+                if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text('Failed to clear data: $e'),
@@ -425,6 +431,80 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             },
             child: const Text(
               'Clear All',
+              style: TextStyle(color: AppConstants.errorColor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteCloudDataDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppConstants.backgroundEnd,
+        title: const Text(
+          'Delete Cloud Data Only?',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'This will delete all your courses and uploaded files from our servers (Firestore & Storage). Your Google account will NOT be deleted.',
+          style: TextStyle(color: AppConstants.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppConstants.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+
+              // Show loading indicator
+              if (!context.mounted) return;
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => const Center(
+                  child: CircularProgressIndicator(
+                    color: AppConstants.primaryColor,
+                  ),
+                ),
+              );
+
+              try {
+                final storageService = ref.read(storageServiceProvider);
+                await storageService.deleteCloudData();
+
+                if (!context.mounted) return;
+                Navigator.pop(context); // Dismiss loading
+
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✅ Cloud data deleted successfully'),
+                    backgroundColor: AppConstants.successColor,
+                  ),
+                );
+              } catch (e) {
+                if (!context.mounted) return;
+                Navigator.pop(context); // Dismiss loading
+
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to delete cloud data: $e'),
+                    backgroundColor: AppConstants.errorColor,
+                  ),
+                );
+              }
+            },
+            child: const Text(
+              'Delete',
               style: TextStyle(color: AppConstants.errorColor),
             ),
           ),
@@ -511,6 +591,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 if (!context.mounted) return;
                 Navigator.pop(context); // Dismiss loading
 
+                if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
@@ -524,6 +605,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 if (!context.mounted) return;
                 Navigator.pop(context); // Dismiss loading
 
+                if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text('Failed to clean up calendar: $e'),
