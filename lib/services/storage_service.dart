@@ -17,7 +17,7 @@ List<CourseInfo> _parseCoursesJson(List<String> coursesJson) {
 /// Stores courses locally (SharedPreferences) and syncs to cloud (Firestore)
 class StorageService {
   static const String _coursesKey = 'saved_courses';
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  FirebaseFirestore? _firestore;
   final FirebaseService _firebaseService = FirebaseService();
   final SharedPreferences? _cachedPrefs;
 
@@ -26,6 +26,19 @@ class StorageService {
 
   /// Constructor with cached SharedPreferences - eliminates repeated getInstance() calls
   StorageService.withPrefs(SharedPreferences prefs) : _cachedPrefs = prefs;
+
+  /// Get Firestore instance only if Firebase is available
+  FirebaseFirestore? get _firestoreInstance {
+    if (_firestore == null && _firebaseService.isAvailable) {
+      try {
+        _firestore = FirebaseFirestore.instance;
+      } catch (e) {
+        print('Firestore not available: $e');
+        return null;
+      }
+    }
+    return _firestore;
+  }
 
   /// Get SharedPreferences instance - uses cached if available
   Future<SharedPreferences> _getPrefs() async {
@@ -268,6 +281,12 @@ class StorageService {
   /// Sync a single course to Firestore
   Future<void> _syncCourseToCloud(CourseInfo course) async {
     try {
+      final firestore = _firestoreInstance;
+      if (firestore == null) {
+        print('Firestore not available - skipping cloud sync');
+        return;
+      }
+
       final user = _firebaseService.currentUser;
       if (user == null) {
         print('Not signed in - skipping cloud sync');
@@ -279,7 +298,7 @@ class StorageService {
           ? course.courseName.toLowerCase().replaceAll(' ', '_')
           : course.courseCode;
 
-      await _firestore
+      await firestore
           .collection('users')
           .doc(userId)
           .collection('courses')
@@ -296,6 +315,12 @@ class StorageService {
   /// Sync all courses from Firestore to local storage
   Future<void> syncFromCloud() async {
     try {
+      final firestore = _firestoreInstance;
+      if (firestore == null) {
+        print('Firestore not available - skipping cloud sync');
+        return;
+      }
+
       final user = _firebaseService.currentUser;
       if (user == null) {
         print('Not signed in - cannot sync from cloud');
@@ -303,7 +328,7 @@ class StorageService {
       }
 
       final userId = user.uid;
-      final snapshot = await _firestore
+      final snapshot = await firestore
           .collection('users')
           .doc(userId)
           .collection('courses')
@@ -356,11 +381,14 @@ class StorageService {
   /// Delete a course from Firestore
   Future<void> _deleteCourseFromCloud(String courseCode) async {
     try {
+      final firestore = _firestoreInstance;
+      if (firestore == null) return;
+
       final user = _firebaseService.currentUser;
       if (user == null) return;
 
       final userId = user.uid;
-      await _firestore
+      await firestore
           .collection('users')
           .doc(userId)
           .collection('courses')
@@ -377,17 +405,20 @@ class StorageService {
   /// Clear all courses from Firestore
   Future<void> _clearCoursesFromCloud() async {
     try {
+      final firestore = _firestoreInstance;
+      if (firestore == null) return;
+
       final user = _firebaseService.currentUser;
       if (user == null) return;
 
       final userId = user.uid;
-      final snapshot = await _firestore
+      final snapshot = await firestore
           .collection('users')
           .doc(userId)
           .collection('courses')
           .get();
 
-      final batch = _firestore.batch();
+      final batch = firestore.batch();
       for (final doc in snapshot.docs) {
         batch.delete(doc.reference);
       }
