@@ -174,7 +174,11 @@ class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
     final event = ModalRoute.of(context)?.settings.arguments as AcademicEvent?;
 
     if (event == null) {
-      return const Scaffold(body: Center(child: Text('Event not found')));
+      return _EventSelectionScreen(
+        title: 'Task Breakdown',
+        subtitle: 'Select an event to break down into tasks',
+        routeName: '/task-breakdown',
+      );
     }
 
     // Load existing tasks if they exist, otherwise auto-generate on first load
@@ -837,5 +841,343 @@ class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
         ],
       ),
     );
+  }
+}
+
+// Event Selection Screen Widget
+class _EventSelectionScreen extends ConsumerStatefulWidget {
+  final String title;
+  final String subtitle;
+  final String routeName;
+
+  const _EventSelectionScreen({
+    required this.title,
+    required this.subtitle,
+    required this.routeName,
+  });
+
+  @override
+  ConsumerState<_EventSelectionScreen> createState() =>
+      _EventSelectionScreenState();
+}
+
+class _EventSelectionScreenState extends ConsumerState<_EventSelectionScreen> {
+  List<AcademicEvent> _allEvents = [];
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEvents();
+  }
+
+  Future<void> _loadEvents() async {
+    try {
+      final storageService = ref.read(storageServiceProvider);
+      final courses = await storageService.getAllCourses();
+
+      final List<AcademicEvent> events = [];
+      for (var course in courses) {
+        events.addAll(course.events);
+      }
+
+      // Sort by date (upcoming first)
+      events.sort((a, b) => a.dueDate.compareTo(b.dueDate));
+
+      setState(() {
+        _allEvents = events;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        title: Text(widget.title),
+        backgroundColor: Colors.transparent,
+        foregroundColor: AppConstants.textPrimary,
+        elevation: 0,
+      ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [AppConstants.backgroundStart, AppConstants.backgroundEnd],
+          ),
+        ),
+        child: SafeArea(
+          child: _isLoading
+              ? const Center(
+                  child: CircularProgressIndicator(
+                    color: AppConstants.primaryColor,
+                  ),
+                )
+              : _errorMessage != null
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.error_outline,
+                        color: AppConstants.errorColor,
+                        size: 64,
+                      ),
+                      const SizedBox(height: AppConstants.spacingM),
+                      Text(
+                        'Error loading events',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: AppConstants.spacingS),
+                      Text(
+                        _errorMessage!,
+                        style: const TextStyle(
+                          color: AppConstants.textSecondary,
+                          fontSize: 14,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                )
+              : _allEvents.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.event_busy,
+                        color: AppConstants.textSecondary,
+                        size: 64,
+                      ),
+                      const SizedBox(height: AppConstants.spacingM),
+                      const Text(
+                        'No Events Found',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: AppConstants.spacingS),
+                      const Text(
+                        'Upload a syllabus to get started',
+                        style: TextStyle(
+                          color: AppConstants.textSecondary,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: AppConstants.spacingL),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pushReplacementNamed(context, '/upload');
+                        },
+                        icon: const Icon(Icons.upload_file),
+                        label: const Text('Upload Syllabus'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppConstants.primaryColor,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppConstants.spacingL,
+                            vertical: AppConstants.spacingM,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(AppConstants.spacingL),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.subtitle,
+                            style: const TextStyle(
+                              color: AppConstants.textSecondary,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: AppConstants.spacingS),
+                          Text(
+                            '${_allEvents.length} ${_allEvents.length == 1 ? 'event' : 'events'} available',
+                            style: const TextStyle(
+                              color: AppConstants.primaryColor,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView.builder(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppConstants.spacingL,
+                        ),
+                        itemCount: _allEvents.length,
+                        itemBuilder: (context, index) {
+                          final event = _allEvents[index];
+                          return _buildEventCard(event);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEventCard(AcademicEvent event) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.pushReplacementNamed(
+          context,
+          widget.routeName,
+          arguments: event,
+        );
+      },
+      child: GlassContainer(
+        margin: const EdgeInsets.only(bottom: AppConstants.spacingM),
+        child: Padding(
+          padding: const EdgeInsets.all(AppConstants.spacingM),
+          child: Row(
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: _getEventColor(event).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  _getEventIcon(event),
+                  color: _getEventColor(event),
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: AppConstants.spacingM),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      event.title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      event.type.displayName,
+                      style: TextStyle(
+                        color: _getEventColor(event),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.calendar_today,
+                          size: 12,
+                          color: AppConstants.textSecondary,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _formatDate(event.dueDate),
+                          style: const TextStyle(
+                            color: AppConstants.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                        if (event.weightage != null) ...[
+                          const SizedBox(width: AppConstants.spacingM),
+                          Icon(
+                            Icons.show_chart,
+                            size: 12,
+                            color: AppConstants.textSecondary,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${event.weightage}%',
+                            style: const TextStyle(
+                              color: AppConstants.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right,
+                color: AppConstants.textSecondary,
+                size: 24,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _getEventColor(AcademicEvent event) {
+    switch (event.priority) {
+      case EventPriority.high:
+        return AppConstants.errorColor;
+      case EventPriority.medium:
+        return AppConstants.warningColor;
+      default:
+        return AppConstants.successColor;
+    }
+  }
+
+  IconData _getEventIcon(AcademicEvent event) {
+    final type = event.type.name.toLowerCase();
+    if (type.contains('exam')) return Icons.edit_note;
+    if (type.contains('assignment')) return Icons.assignment;
+    if (type.contains('quiz')) return Icons.quiz;
+    if (type.contains('project')) return Icons.work;
+    if (type.contains('lab')) return Icons.science;
+    return Icons.event;
+  }
+
+  String _formatDate(DateTime date) {
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
 }

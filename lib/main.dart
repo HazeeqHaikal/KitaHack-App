@@ -16,6 +16,12 @@ import 'package:due/screens/event_detail_screen.dart';
 import 'package:due/screens/task_breakdown_screen.dart';
 import 'package:due/screens/study_allocator_screen.dart';
 import 'package:due/screens/resource_finder_screen.dart';
+import 'package:due/screens/group_sync_screen.dart';
+import 'package:due/screens/smart_notifications_screen.dart';
+import 'package:due/screens/analytics_dashboard_screen.dart';
+import 'package:due/screens/personalized_study_screen.dart';
+import 'package:due/screens/progress_tracking_screen.dart';
+import 'package:due/screens/adaptive_learning_screen.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/utils/route_transitions.dart';
 import 'package:due/services/firebase_service.dart';
@@ -221,6 +227,24 @@ class DueApp extends StatelessWidget {
             break;
           case '/resource-finder':
             page = const ResourceFinderScreen();
+            break;
+          case '/group-sync':
+            page = const GroupSyncScreen();
+            break;
+          case '/smart-notifications':
+            page = const SmartNotificationsScreen();
+            break;
+          case '/analytics-dashboard':
+            page = const AnalyticsDashboardScreen();
+            break;
+          case '/personalized-study':
+            page = const PersonalizedStudyScreen();
+            break;
+          case '/progress-tracking':
+            page = const ProgressTrackingScreen();
+            break;
+          case '/adaptive-learning':
+            page = const AdaptiveLearningScreen();
             break;
           default:
             page = const AuthStateWrapper(child: HomeScreen());

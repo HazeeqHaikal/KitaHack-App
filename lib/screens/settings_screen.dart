@@ -163,6 +163,74 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
               ),
               const SizedBox(height: AppConstants.spacingL),
 
+              // Phase 2 Features (UI Complete)
+              _buildSectionTitle('Phase 2 Features (UI Complete)'),
+              _buildSettingItem(
+                context,
+                icon: Icons.search,
+                title: 'Resource Finder',
+                subtitle: 'Find educational resources for your courses',
+                onTap: () => Navigator.pushNamed(context, '/resource-finder'),
+              ),
+              const SizedBox(height: AppConstants.spacingL),
+
+              // Phase 3 Features
+              _buildSectionTitle('Phase 3 Features (Mock)'),
+              _buildSettingItem(
+                context,
+                icon: Icons.group,
+                title: 'Group Sync & Course Codes',
+                subtitle: 'Share courses with classmates',
+                onTap: () => Navigator.pushNamed(context, '/group-sync'),
+              ),
+              const SizedBox(height: AppConstants.spacingS),
+              _buildSettingItem(
+                context,
+                icon: Icons.notifications_active,
+                title: 'Smart Notifications',
+                subtitle: 'AI-powered reminder settings',
+                onTap: () =>
+                    Navigator.pushNamed(context, '/smart-notifications'),
+              ),
+              const SizedBox(height: AppConstants.spacingS),
+              _buildSettingItem(
+                context,
+                icon: Icons.analytics,
+                title: 'Analytics Dashboard',
+                subtitle: 'Track completion rates and study patterns',
+                onTap: () =>
+                    Navigator.pushNamed(context, '/analytics-dashboard'),
+              ),
+              const SizedBox(height: AppConstants.spacingL),
+
+              // Phase 4 Features
+              _buildSectionTitle('Phase 4 Features (Mock)'),
+              _buildSettingItem(
+                context,
+                icon: Icons.psychology,
+                title: 'Personalized Study Plans',
+                subtitle: 'AI adapts to your learning style',
+                onTap: () =>
+                    Navigator.pushNamed(context, '/personalized-study'),
+              ),
+              const SizedBox(height: AppConstants.spacingS),
+              _buildSettingItem(
+                context,
+                icon: Icons.timeline,
+                title: 'Progress Tracking',
+                subtitle: 'Milestone completion with visual indicators',
+                onTap: () => Navigator.pushNamed(context, '/progress-tracking'),
+              ),
+              const SizedBox(height: AppConstants.spacingS),
+              _buildSettingItem(
+                context,
+                icon: Icons.auto_awesome,
+                title: 'Adaptive Learning',
+                subtitle: 'AI adjusts study duration based on performance',
+                onTap: () => Navigator.pushNamed(context, '/adaptive-learning'),
+              ),
+              const SizedBox(height: AppConstants.spacingL),
+
               if (_isSignedIn) ...[
                 _buildSectionTitle('Data Management'),
                 _buildSettingItem(
