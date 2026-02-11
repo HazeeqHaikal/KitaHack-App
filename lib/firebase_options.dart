@@ -47,29 +47,31 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBNiHt9BoCTzRcZQzdmnpxRq7uU9MoRSo4',
-    appId: '1:971318709956:android:4392fec87334f56f568391',
-    messagingSenderId: '971318709956',
-    projectId: 'kitahack-app',
-    storageBucket: 'kitahack-app.firebasestorage.app',
+    apiKey: 'AIzaSyBKvMMwgMeU5dfO9h3l9kt6vFAVwkeojgg',
+    appId: '1:64008081491:android:78d36d1ce1af3e503276a6',
+    messagingSenderId: '64008081491',
+    projectId: 'gen-lang-client-0596703750',
+    storageBucket: 'gen-lang-client-0596703750.firebasestorage.app',
   );
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyAS0xvTiT1ittvvYzIoW7D597YFKXoxvS4',
-    appId: '1:971318709956:web:f80ee32eddf8496f568391',
-    messagingSenderId: '971318709956',
-    projectId: 'kitahack-app',
-    authDomain: 'kitahack-app.firebaseapp.com',
-    storageBucket: 'kitahack-app.firebasestorage.app',
+    apiKey: 'AIzaSyBfHv5QHkjV8GS5yIto-7DUqnhZRNd8cKA',
+    appId: '1:64008081491:web:57581902aece732c3276a6',
+    messagingSenderId: '64008081491',
+    projectId: 'gen-lang-client-0596703750',
+    authDomain: 'gen-lang-client-0596703750.firebaseapp.com',
+    storageBucket: 'gen-lang-client-0596703750.firebasestorage.app',
+    measurementId: 'G-LLKZSTD2JB',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyAS0xvTiT1ittvvYzIoW7D597YFKXoxvS4',
-    appId: '1:971318709956:web:d761c3e64f4cc0fc568391',
-    messagingSenderId: '971318709956',
-    projectId: 'kitahack-app',
-    authDomain: 'kitahack-app.firebaseapp.com',
-    storageBucket: 'kitahack-app.firebasestorage.app',
+    apiKey: 'AIzaSyBfHv5QHkjV8GS5yIto-7DUqnhZRNd8cKA',
+    appId: '1:64008081491:web:aef970ff12bdbbd23276a6',
+    messagingSenderId: '64008081491',
+    projectId: 'gen-lang-client-0596703750',
+    authDomain: 'gen-lang-client-0596703750.firebaseapp.com',
+    storageBucket: 'gen-lang-client-0596703750.firebasestorage.app',
+    measurementId: 'G-ZS0D1CJ6KF',
   );
 
 }
