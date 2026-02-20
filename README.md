@@ -276,7 +276,21 @@ GOOGLE_CLIENT_ID=your_client_id_here.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your_client_secret_here
 ```
 
-#### 3. Firebase (Optional)
+#### 3. YouTube Data API (Optional - for Resource Finder)
+```bash
+# Steps:
+1. Go to: https://console.cloud.google.com/
+2. Use same project as Calendar API
+3. Enable "YouTube Data API v3"
+4. Use existing API key or create new one
+5. Add to .env:
+YOUTUBE_API_KEY=your_youtube_api_key_here
+
+# Free tier: 10,000 units/day (~100 searches)
+# Cost: FREE for typical usage
+```
+
+#### 4. Firebase (Optional)
 Firebase is used for optional file storage and authentication. The app will work without it in limited capacity.
 
 ```bash

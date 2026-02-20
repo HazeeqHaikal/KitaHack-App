@@ -15,6 +15,9 @@ class ApiConfig {
   static String get googleClientSecret =>
       dotenv.env['GOOGLE_CLIENT_SECRET'] ?? '';
 
+  // YouTube Data API Configuration
+  static String get youtubeApiKey => dotenv.env['YOUTUBE_API_KEY'] ?? '';
+
   // Development Mode Configuration
   static bool get devMode => dotenv.env['DEV_MODE']?.toLowerCase() == 'true';
   static bool get enableUsageTracking =>
