@@ -4,84 +4,128 @@ import 'package:due/config/api_config.dart';
 
 /// Service for YouTube Data API v3 integration
 /// Used by Resource Finder to search educational videos
-/// 
-/// API Documentation: https://developers.google.com/youtube/v3/docs
-/// Free tier: 10,000 units/day (~100 searches)
 class YouTubeService {
   static const String _baseUrl = 'https://www.googleapis.com/youtube/v3';
 
   /// Search for educational videos related to a topic
-  /// 
-  /// [query] - Search term (e.g., "Data Structures tutorial")
-  /// [maxResults] - Number of videos to return (default: 3)
-  /// 
-  /// Returns list of video resources with:
-  /// - videoId: YouTube video ID
-  /// - title: Video title
-  /// - channelTitle: Channel name
-  /// - description: Video description
-  /// - thumbnailUrl: Thumbnail image URL
-  /// - publishedAt: Publication date
-  /// 
-  /// Cost: ~100 quota units per search
-  /// 
-  /// TODO: Implement video search
-  /// Example endpoint: GET /search?part=snippet&q={query}&type=video&maxResults={maxResults}&key={apiKey}
   Future<List<Map<String, dynamic>>> searchVideos(
     String query, {
     int maxResults = 3,
   }) async {
-    // TODO: Implement YouTube video search
-    // 1. Get API key from ApiConfig.youtubeApiKey
-    // 2. Build request URL with query parameters
-    // 3. Make HTTP GET request
-    // 4. Parse JSON response
-    // 5. Extract relevant video data
-    // 6. Return list of video objects
-    
-    throw UnimplementedError('YouTube video search not yet implemented');
+    final apiKey = ApiConfig.youtubeApiKey;
+    if (apiKey.isEmpty) throw Exception('YouTube API Key not configured.');
+
+    // 1. Build request URL for search
+    final searchUrl = Uri.parse(
+        '$_baseUrl/search?part=snippet&maxResults=$maxResults&q=${Uri.encodeComponent(query)}&type=video&key=$apiKey');
+
+    // 2. Make HTTP GET request
+    final response = await http.get(searchUrl);
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      final items = data['items'] as List;
+
+      if (items.isEmpty) return [];
+
+      // 3. Extract Video IDs to fetch exact duration and views
+      final videoIds = items.map((item) => item['id']['videoId'] as String).toList();
+      final details = await getVideoDetails(videoIds);
+
+      // 4. Map the data to exactly what your UI expects
+      return items.asMap().entries.map((entry) {
+        final index = entry.key;
+        final item = entry.value;
+        final snippet = item['snippet'];
+        
+        // Fallback just in case details fail to load
+        final detail = details.length > index ? details[index] : {'duration': 'PT0M0S', 'viewCount': '0'};
+
+        // Clean up HTML entities in titles like &quot; or &#39;
+        final rawTitle = snippet['title'].toString();
+        final cleanTitle = rawTitle.replaceAll('&quot;', '"').replaceAll('&#39;', "'").replaceAll('&amp;', '&');
+
+        return {
+          'title': cleanTitle,
+          'type': 'Video',
+          'platform': 'YouTube',
+          'duration': formatDuration(detail['duration'] as String),
+          'views': formatViewCount(int.parse(detail['viewCount'] as String)),
+          'channel': snippet['channelTitle'],
+          'rating': 4.9, // Hardcoded since YouTube API doesn't provide rating
+          'thumbnail': snippet['thumbnails']['high']['url'],
+          'url': 'https://www.youtube.com/watch?v=${item['id']['videoId']}',
+        };
+      }).toList();
+    } else {
+      throw Exception('Failed to load videos from YouTube. Status Code: ${response.statusCode}');
+    }
   }
 
   /// Get detailed information about specific videos
-  /// 
-  /// [videoIds] - List of YouTube video IDs
-  /// 
-  /// Returns detailed video data including:
-  /// - duration: Video length (ISO 8601 format)
-  /// - viewCount: Number of views
-  /// - likeCount: Number of likes
-  /// - tags: Video tags
-  /// 
-  /// Cost: ~1 quota unit per video
-  /// 
-  /// TODO: Implement video details fetching
-  /// Example endpoint: GET /videos?part=contentDetails,statistics&id={videoIds}&key={apiKey}
-  Future<List<Map<String, dynamic>>> getVideoDetails(
-    List<String> videoIds,
-  ) async {
-    // TODO: Implement video details fetching
-    // 1. Join video IDs with commas
-    // 2. Build request URL
-    // 3. Make HTTP GET request
-    // 4. Parse response
-    // 5. Extract duration, views, likes
-    // 6. Return enriched video data
+  Future<List<Map<String, dynamic>>> getVideoDetails(List<String> videoIds) async {
+    if (videoIds.isEmpty) return [];
     
-    throw UnimplementedError('YouTube video details not yet implemented');
+    final apiKey = ApiConfig.youtubeApiKey;
+    final idsString = videoIds.join(',');
+    
+    final url = Uri.parse(
+        '$_baseUrl/videos?part=contentDetails,statistics&id=$idsString&key=$apiKey');
+
+    final response = await http.get(url);
+    
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      final items = data['items'] as List;
+      
+      return items.map((item) => {
+            'duration': item['contentDetails']['duration'],
+            'viewCount': item['statistics']['viewCount'] ?? '0',
+          }).toList();
+    }
+    return [];
   }
 
   /// Format ISO 8601 duration to human-readable format
-  /// 
-  /// Example: "PT4H32M15S" → "4:32:15"
   String formatDuration(String isoDuration) {
-    // TODO: Implement duration parser
-    // Parse ISO 8601 format (PT#H#M#S) to HH:MM:SS
-    return isoDuration;
+    // Simple parser for YouTube's PT#H#M#S format
+    String duration = isoDuration.replaceAll('PT', '');
+    
+    // Handle hours
+    if (duration.contains('H')) {
+      duration = duration.replaceAll('H', ':');
+    }
+    
+    // Handle minutes
+    if (duration.contains('M')) {
+      duration = duration.replaceAll('M', ':');
+    } else if (duration.contains(':')) {
+      // If there are hours but no minutes, add '00:'
+      duration = duration.replaceAll(':', ':00:');
+    }
+    
+    // Handle seconds
+    if (duration.contains('S')) {
+      duration = duration.replaceAll('S', '');
+      // Fix single digit seconds (e.g., 4:5 -> 4:05)
+      final parts = duration.split(':');
+      if (parts.length > 1 && parts.last.length == 1) {
+        parts[parts.length - 1] = '0${parts.last}';
+        duration = parts.join(':');
+      }
+    } else {
+      duration += '00';
+    }
+    
+    // Clean up trailing colons
+    if (duration.endsWith(':')) {
+      duration += '00';
+    }
+    
+    return duration;
   }
 
   /// Format view count to human-readable format
-  /// 
-  /// Example: 2100000 → "2.1M views"
   String formatViewCount(int viewCount) {
     if (viewCount >= 1000000) {
       return '${(viewCount / 1000000).toStringAsFixed(1)}M views';

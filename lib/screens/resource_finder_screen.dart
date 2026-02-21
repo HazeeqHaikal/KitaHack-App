@@ -4,6 +4,7 @@ import 'package:due/models/academic_event.dart';
 import 'package:due/services/storage_service.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/widgets/glass_container.dart';
+import 'package:due/services/youtube_service.dart';
 
 class ResourceFinderScreen extends StatefulWidget {
   const ResourceFinderScreen({super.key});
@@ -17,19 +18,49 @@ class _ResourceFinderScreenState extends State<ResourceFinderScreen> {
   bool _isSearching = false;
   String _selectedFilter = 'All';
 
-  void _findResources(AcademicEvent event) {
+  Future<void> _findResources(AcademicEvent event) async {
     setState(() {
       _isSearching = true;
+      _resources.clear();
     });
 
-    // Simulate AI search through YouTube and web
-    Future.delayed(const Duration(seconds: 2), () {
-      setState(() {
-        _isSearching = false;
-        _resources.clear();
-        _resources.addAll(_generateMockResources(event));
+    try {
+      final youtubeService = YouTubeService();
+      
+      // 1. Fire the real API request!
+      final searchQuery = '${event.title} university tutorial';
+      final realVideos = await youtubeService.searchVideos(
+        searchQuery,
+        maxResults: 3, // Limit to top 3 for better UI and faster loading
+      );
+
+      // 2. Add the bonus PDF Document search link
+      realVideos.add({
+        'title': '${event.title} PDF Study Guide',
+        'type': 'Document',
+        'platform': 'Web',
+        'duration': 'PDF',
+        'views': '10k+ downloads',
+        'channel': 'Google Scholar',
+        'rating': 4.5,
+        'thumbnail': '',
+        'url': 'https://google.com/search?q=${Uri.encodeComponent(event.title + " filetype:pdf")}',
       });
-    });
+
+      // 3. Update the UI with real data
+      setState(() {
+        _resources.addAll(realVideos);
+        _isSearching = false;
+      });
+      
+    } catch (e) {
+      print('YouTube API Error: $e');
+      // 4. Safety Net: Fallback to mock data if the API fails
+      setState(() {
+        _resources.addAll(_generateMockResources(event));
+        _isSearching = false;
+      });
+    }
   }
 
   List<Map<String, dynamic>> _generateMockResources(AcademicEvent event) {
@@ -450,13 +481,27 @@ class _ResourceFinderScreenState extends State<ResourceFinderScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: iconColor.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, color: iconColor, size: 24),
-                ),
+  width: 80, // Set a fixed width for the thumbnail
+  height: 60, // Set a fixed height
+  decoration: BoxDecoration(
+    color: iconColor.withOpacity(0.2),
+    borderRadius: BorderRadius.circular(8),
+  ),
+  // ClipRRect is Flutter's version of CSS "overflow: hidden"
+  child: (resource['thumbnail'] != null && resource['thumbnail'].toString().isNotEmpty)
+      ? ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.network(
+            resource['thumbnail'] as String,
+            fit: BoxFit.cover, // This acts like CSS "object-fit: cover"
+            errorBuilder: (context, error, stackTrace) {
+              // If the image fails to load, fall back to the icon
+              return Center(child: Icon(icon, color: iconColor, size: 24));
+            },
+          ),
+        )
+      : Center(child: Icon(icon, color: iconColor, size: 24)),
+),
                 const SizedBox(width: AppConstants.spacingM),
                 Expanded(
                   child: Column(
