@@ -1,7 +1,9 @@
 import 'dart:typed_data';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:due/models/academic_event.dart';
+import 'package:due/services/firebase_service.dart';
 import 'package:due/services/storage_service.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/widgets/glass_container.dart';
@@ -18,6 +20,7 @@ class ResourceFinderScreen extends StatefulWidget {
 class _ResourceFinderScreenState extends State<ResourceFinderScreen> {
   final List<Map<String, dynamic>> _resources = [];
   bool _isSearching = false;
+  bool _isCached = false;
   String _selectedFilter = 'All';
 
   // Optional resource bytes forwarded from EventDetailScreen
@@ -25,9 +28,82 @@ class _ResourceFinderScreenState extends State<ResourceFinderScreen> {
   String? _contextExtension;
   bool _argsLoaded = false;
 
-  Future<void> _findResources(AcademicEvent event) async {
+  // ── Firestore helpers ──────────────────────────────────────────────────────
+
+  /// Firestore collection path for a given event, scoped to the current user.
+  CollectionReference<Map<String, dynamic>>? _cacheCollection(String eventId) {
+    final uid = FirebaseService().currentUser?.uid;
+    if (uid == null) return null;
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('resource_cache');
+  }
+
+  /// Attempt to load previously saved resources from Firestore.
+  /// Returns true if a valid cache was found and loaded.
+  Future<bool> _loadFromFirestore(String eventId) async {
+    try {
+      final col = _cacheCollection(eventId);
+      if (col == null) return false;
+
+      final doc = await col.doc(eventId).get();
+      if (!doc.exists) return false;
+
+      final data = doc.data()!;
+      final List<dynamic> raw = data['resources'] as List<dynamic>? ?? [];
+      if (raw.isEmpty) return false;
+
+      final resources = raw
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+
+      setState(() {
+        _resources
+          ..clear()
+          ..addAll(resources);
+        _isCached = true;
+      });
+      print('Loaded ${resources.length} resources from Firestore cache');
+      return true;
+    } catch (e) {
+      print('Firestore cache load error (non-critical): $e');
+      return false;
+    }
+  }
+
+  /// Save the current resources list to Firestore so other devices can use it.
+  Future<void> _saveToFirestore(String eventId) async {
+    try {
+      final col = _cacheCollection(eventId);
+      if (col == null) return;
+
+      await col.doc(eventId).set({
+        'eventId': eventId,
+        'resources': _resources,
+        'cachedAt': FieldValue.serverTimestamp(),
+      });
+      print('Saved ${_resources.length} resources to Firestore');
+    } catch (e) {
+      print('Firestore cache save error (non-critical): $e');
+    }
+  }
+
+  // ── Main search ────────────────────────────────────────────────────────────
+
+  Future<void> _findResources(
+    AcademicEvent event, {
+    bool forceRefresh = false,
+  }) async {
+    // Try cache first (unless user explicitly wants a refresh)
+    if (!forceRefresh) {
+      final loaded = await _loadFromFirestore(event.id);
+      if (loaded) return;
+    }
+
     setState(() {
       _isSearching = true;
+      _isCached = false;
       _resources.clear();
     });
 
@@ -46,7 +122,7 @@ class _ResourceFinderScreenState extends State<ResourceFinderScreen> {
       // 2. Fire the real API request!
       final realVideos = await youtubeService.searchVideos(
         searchQuery,
-        maxResults: 3, // Limit to top 3 for better UI and faster loading
+        maxResults: 3,
       );
 
       // 3. Add the bonus PDF Document search link
@@ -60,17 +136,19 @@ class _ResourceFinderScreenState extends State<ResourceFinderScreen> {
         'rating': 4.5,
         'thumbnail': '',
         'url':
-            'https://google.com/search?q=${Uri.encodeComponent(event.title + " filetype:pdf")}',
+            'https://google.com/search?q=${Uri.encodeComponent('${event.title} filetype:pdf')}',
       });
 
-      // 4. Update the UI with real data
       setState(() {
         _resources.addAll(realVideos);
         _isSearching = false;
       });
+
+      // 4. Persist to Firestore in the background
+      await _saveToFirestore(event.id);
     } catch (e) {
       print('YouTube API Error: $e');
-      // 5. Safety Net: Fallback to mock data if the API fails
+      // Safety Net: Fallback to mock data if the API fails
       setState(() {
         _resources.addAll(_generateMockResources(event));
         _isSearching = false;
@@ -260,179 +338,251 @@ class _ResourceFinderScreenState extends State<ResourceFinderScreen> {
           ),
         ),
         child: SafeArea(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(AppConstants.spacingL),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    GlassContainer(
-                      padding: const EdgeInsets.all(AppConstants.spacingM),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: AppConstants.accentColor.withOpacity(
-                                    0.2,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(
-                                  Icons.smart_display,
-                                  color: AppConstants.accentColor,
-                                  size: 20,
-                                ),
-                              ),
-                              const SizedBox(width: AppConstants.spacingM),
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Instant Resource Finder',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    Text(
-                                      'AI finds relevant videos & study materials',
-                                      style: TextStyle(
-                                        color: AppConstants.textSecondary,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: AppConstants.spacingM),
-                          Container(
-                            padding: const EdgeInsets.all(
-                              AppConstants.spacingS,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppConstants.accentColor.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
+          child: CustomScrollView(
+            slivers: [
+              // ── Header (scrolls away with content) ──────────────────────
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppConstants.spacingL),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      GlassContainer(
+                        padding: const EdgeInsets.all(AppConstants.spacingM),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
                               children: [
-                                const Icon(
-                                  Icons.event,
-                                  color: AppConstants.accentColor,
-                                  size: 16,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    event.title,
-                                    style: const TextStyle(
-                                      color: AppConstants.textPrimary,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: AppConstants.accentColor.withOpacity(
+                                      0.2,
                                     ),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.smart_display,
+                                    color: AppConstants.accentColor,
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: AppConstants.spacingM),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Instant Resource Finder',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                      Text(
+                                        'AI finds relevant videos & study materials',
+                                        style: TextStyle(
+                                          color: AppConstants.textSecondary,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: AppConstants.spacingM),
-                    Container(
-                      padding: const EdgeInsets.all(AppConstants.spacingS),
-                      decoration: BoxDecoration(
-                        color: AppConstants.accentColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: AppConstants.accentColor.withOpacity(0.3),
-                        ),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            color: AppConstants.accentColor,
-                            size: 16,
-                          ),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Powered by YouTube Data API & Gemini AI',
-                              style: TextStyle(
-                                color: AppConstants.accentColor,
-                                fontSize: 11,
+                            const SizedBox(height: AppConstants.spacingM),
+                            Container(
+                              padding: const EdgeInsets.all(
+                                AppConstants.spacingS,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppConstants.accentColor.withOpacity(
+                                  0.1,
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.event,
+                                    color: AppConstants.accentColor,
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      event.title,
+                                      style: const TextStyle(
+                                        color: AppConstants.textPrimary,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (_resources.isNotEmpty) ...[
-                      const SizedBox(height: AppConstants.spacingM),
-                      SizedBox(
-                        height: 36,
-                        child: ListView(
-                          scrollDirection: Axis.horizontal,
-                          children: [
-                            _buildFilterChip('All'),
-                            const SizedBox(width: 8),
-                            _buildFilterChip('Video'),
-                            const SizedBox(width: 8),
-                            _buildFilterChip('Document'),
-                            const SizedBox(width: 8),
-                            _buildFilterChip('Interactive'),
                           ],
                         ),
                       ),
+                      const SizedBox(height: AppConstants.spacingM),
+                      // Cache / API info row + refresh button
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.all(
+                                AppConstants.spacingS,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _isCached
+                                    ? Colors.green.withOpacity(0.1)
+                                    : AppConstants.accentColor.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: _isCached
+                                      ? Colors.green.withOpacity(0.4)
+                                      : AppConstants.accentColor.withOpacity(
+                                          0.3,
+                                        ),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    _isCached
+                                        ? Icons.cloud_done
+                                        : Icons.info_outline,
+                                    color: _isCached
+                                        ? Colors.green
+                                        : AppConstants.accentColor,
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      _isCached
+                                          ? 'Loaded from cloud cache'
+                                          : 'Powered by YouTube Data API & Gemini AI',
+                                      style: TextStyle(
+                                        color: _isCached
+                                            ? Colors.green
+                                            : AppConstants.accentColor,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          if (_resources.isNotEmpty) ...[
+                            const SizedBox(width: AppConstants.spacingS),
+                            Tooltip(
+                              message: 'Refresh (uses API credits)',
+                              child: IconButton(
+                                onPressed: _isSearching
+                                    ? null
+                                    : () => _findResources(
+                                        event!,
+                                        forceRefresh: true,
+                                      ),
+                                icon: _isSearching
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: AppConstants.accentColor,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.refresh,
+                                        color: AppConstants.accentColor,
+                                      ),
+                                style: IconButton.styleFrom(
+                                  backgroundColor: AppConstants.accentColor
+                                      .withOpacity(0.1),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    side: BorderSide(
+                                      color: AppConstants.accentColor
+                                          .withOpacity(0.3),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (_resources.isNotEmpty) ...[
+                        const SizedBox(height: AppConstants.spacingM),
+                        SizedBox(
+                          height: 36,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            children: [
+                              _buildFilterChip('All'),
+                              const SizedBox(width: 8),
+                              _buildFilterChip('Video'),
+                              const SizedBox(width: 8),
+                              _buildFilterChip('Document'),
+                              const SizedBox(width: 8),
+                              _buildFilterChip('Interactive'),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
-              Expanded(
-                child: _isSearching
-                    ? const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            CircularProgressIndicator(
-                              color: AppConstants.accentColor,
-                            ),
-                            SizedBox(height: AppConstants.spacingM),
-                            Text(
-                              'Searching YouTube and web for resources...',
-                              style: TextStyle(
-                                color: AppConstants.textSecondary,
-                              ),
-                            ),
-                          ],
+              // ── Content ─────────────────────────────────────────────────
+              if (_isSearching)
+                const SliverFillRemaining(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(
+                          color: AppConstants.accentColor,
                         ),
-                      )
-                    : filteredResources.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'No resources found',
+                        SizedBox(height: AppConstants.spacingM),
+                        Text(
+                          'Searching YouTube and web for resources...',
                           style: TextStyle(color: AppConstants.textSecondary),
                         ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppConstants.spacingL,
-                        ),
-                        itemCount: filteredResources.length,
-                        itemBuilder: (context, index) {
-                          return _buildResourceCard(filteredResources[index]);
-                        },
-                      ),
-              ),
+                      ],
+                    ),
+                  ),
+                )
+              else if (filteredResources.isEmpty)
+                const SliverFillRemaining(
+                  child: Center(
+                    child: Text(
+                      'No resources found',
+                      style: TextStyle(color: AppConstants.textSecondary),
+                    ),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppConstants.spacingL,
+                  ),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) =>
+                          _buildResourceCard(filteredResources[index]),
+                      childCount: filteredResources.length,
+                    ),
+                  ),
+                ),
             ],
           ),
         ),

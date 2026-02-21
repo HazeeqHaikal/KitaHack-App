@@ -1,8 +1,11 @@
 import 'dart:typed_data';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:due/models/academic_event.dart';
+import 'package:due/services/firebase_service.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/utils/date_formatter.dart';
 import 'package:due/widgets/glass_container.dart';
@@ -20,7 +23,124 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   String? _resourceFileName;
   String? _resourceExtension;
 
-  Future<void> _pickResourceFile() async {
+  // Cloud resource state
+  bool _isCloudResource = false; // current bytes came from Firebase
+  bool _isLoadingCloudResource = false;
+  bool _isSavingToCloud = false;
+  String? _cloudEventId; // which event we already initialised for
+
+  // ── Firestore / Storage helpers ─────────────────────────────────────────
+
+  DocumentReference<Map<String, dynamic>>? _metaDoc(String eventId) {
+    final uid = FirebaseService().currentUser?.uid;
+    if (uid == null) return null;
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('event_resource_meta')
+        .doc(eventId);
+  }
+
+  String _storagePath(String uid, String eventId, String ext) =>
+      'users/$uid/event_resources/$eventId.$ext';
+
+  /// On first open: check Firestore for a previously saved resource
+  /// and download the bytes from Storage if found.
+  Future<void> _loadCloudResource(String eventId) async {
+    if (_isLoadingCloudResource || _cloudEventId == eventId) return;
+    setState(() {
+      _isLoadingCloudResource = true;
+      _cloudEventId = eventId;
+    });
+
+    try {
+      final doc = _metaDoc(eventId);
+      if (doc == null) return;
+
+      final snap = await doc.get();
+      if (!snap.exists) return;
+
+      final data = snap.data()!;
+      final storagePath = data['storagePath'] as String?;
+      final fileName = data['fileName'] as String?;
+      final extension = data['extension'] as String?;
+      if (storagePath == null) return;
+
+      final ref = FirebaseService().storage.ref().child(storagePath);
+      // ref.getData() is broken on Flutter Web — use download URL + http instead
+      final downloadUrl = await ref.getDownloadURL();
+      final response = await http.get(Uri.parse(downloadUrl));
+      if (response.statusCode != 200 || response.bodyBytes.isEmpty) return;
+      final bytes = response.bodyBytes;
+
+      setState(() {
+        _resourceBytes = bytes;
+        _resourceFileName = fileName;
+        _resourceExtension = extension;
+        _isCloudResource = true;
+      });
+      print('Loaded resource from cloud: $fileName');
+    } catch (e) {
+      print('Cloud resource load error (non-critical): $e');
+    } finally {
+      setState(() => _isLoadingCloudResource = false);
+    }
+  }
+
+  /// Upload bytes to Storage + save metadata to Firestore.
+  Future<void> _saveResourceToCloud(
+    String eventId,
+    Uint8List bytes,
+    String fileName,
+    String extension,
+  ) async {
+    final uid = FirebaseService().currentUser?.uid;
+    if (uid == null) return;
+
+    setState(() => _isSavingToCloud = true);
+    try {
+      final path = _storagePath(uid, eventId, extension);
+      final ref = FirebaseService().storage.ref().child(path);
+      await ref.putData(bytes);
+
+      await _metaDoc(eventId)?.set({
+        'eventId': eventId,
+        'fileName': fileName,
+        'extension': extension,
+        'storagePath': path,
+        'savedAt': FieldValue.serverTimestamp(),
+      });
+
+      setState(() => _isCloudResource = true);
+      print('Resource saved to cloud: $fileName');
+    } catch (e) {
+      print('Cloud resource save error (non-critical): $e');
+    } finally {
+      setState(() => _isSavingToCloud = false);
+    }
+  }
+
+  /// Delete from Storage + Firestore when user removes the file.
+  Future<void> _deleteCloudResource(String eventId) async {
+    try {
+      final doc = _metaDoc(eventId);
+      if (doc == null) return;
+
+      final snap = await doc.get();
+      if (snap.exists) {
+        final path = snap.data()?['storagePath'] as String?;
+        if (path != null) {
+          await FirebaseService().storage.ref().child(path).delete();
+        }
+        await doc.delete();
+      }
+      print('Cloud resource deleted for event: $eventId');
+    } catch (e) {
+      print('Cloud resource delete error (non-critical): $e');
+    }
+  }
+
+  Future<void> _pickResourceFile(AcademicEvent event) async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -57,12 +177,29 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           _resourceBytes = bytes;
           _resourceFileName = file.name;
           _resourceExtension = file.extension ?? 'pdf';
+          _isCloudResource = false;
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('📄 Resource attached: ${file.name}'),
               backgroundColor: AppConstants.successColor,
+            ),
+          );
+        }
+        // Save to Firebase in the background
+        await _saveResourceToCloud(
+          event.id,
+          bytes,
+          file.name,
+          file.extension ?? 'pdf',
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('☁️ Resource saved to cloud'),
+              backgroundColor: AppConstants.successColor,
+              duration: Duration(seconds: 2),
             ),
           );
         }
@@ -79,11 +216,16 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
   }
 
-  void _removeResourceFile() {
+  void _removeResourceFile(AcademicEvent event) {
+    if (_isCloudResource) {
+      _deleteCloudResource(event.id);
+    }
     setState(() {
       _resourceBytes = null;
       _resourceFileName = null;
       _resourceExtension = null;
+      _isCloudResource = false;
+      _cloudEventId = null; // allow re-check next open
     });
   }
 
@@ -241,6 +383,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       return const Scaffold(body: Center(child: Text('Event not found')));
     }
 
+    // Auto-load cloud resource the first time this event is opened
+    if (_cloudEventId != event.id && !_isLoadingCloudResource) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _loadCloudResource(event.id),
+      );
+    }
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -277,7 +426,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 const SizedBox(height: AppConstants.spacingXL),
                 _buildEventInfo(context, event),
                 const SizedBox(height: AppConstants.spacingXL),
-                _buildResourceSection(context),
+                _buildResourceSection(context, event),
                 const SizedBox(height: AppConstants.spacingXL),
                 _buildSmartFeatures(context, event),
                 const SizedBox(height: AppConstants.spacingXL),
@@ -404,7 +553,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     );
   }
 
-  Widget _buildResourceSection(BuildContext context) {
+  Widget _buildResourceSection(BuildContext context, AcademicEvent event) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -451,9 +600,36 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 ),
               ),
               const SizedBox(height: AppConstants.spacingM),
-              if (_resourceBytes == null)
+              if (_isLoadingCloudResource)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 10),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppConstants.secondaryColor,
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'Loading saved resource…',
+                          style: TextStyle(
+                            color: AppConstants.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else if (_resourceBytes == null)
                 OutlinedButton.icon(
-                  onPressed: _pickResourceFile,
+                  onPressed: () => _pickResourceFile(event),
                   icon: const Icon(Icons.attach_file),
                   label: const Text('Attach File'),
                   style: OutlinedButton.styleFrom(
@@ -476,28 +652,64 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(
-                        Icons.insert_drive_file,
+                      Icon(
+                        _isCloudResource
+                            ? Icons.cloud_done
+                            : Icons.insert_drive_file,
                         color: AppConstants.successColor,
                         size: 18,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text(
-                          _resourceFileName ?? 'Attached file',
-                          style: const TextStyle(
-                            color: AppConstants.textPrimary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          overflow: TextOverflow.ellipsis,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _resourceFileName ?? 'Attached file',
+                              style: const TextStyle(
+                                color: AppConstants.textPrimary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (_isSavingToCloud)
+                              const Row(
+                                children: [
+                                  SizedBox(
+                                    width: 10,
+                                    height: 10,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 1.5,
+                                      color: AppConstants.textSecondary,
+                                    ),
+                                  ),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Saving to cloud…',
+                                    style: TextStyle(
+                                      color: AppConstants.textSecondary,
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            else if (_isCloudResource)
+                              const Text(
+                                'Saved to cloud',
+                                style: TextStyle(
+                                  color: AppConstants.textSecondary,
+                                  fontSize: 10,
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                       IconButton(
                         icon: const Icon(Icons.close),
                         iconSize: 18,
                         color: AppConstants.textSecondary,
-                        onPressed: _removeResourceFile,
+                        onPressed: () => _removeResourceFile(event),
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
                       ),

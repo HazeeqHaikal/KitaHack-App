@@ -801,15 +801,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         ),
         const SizedBox(height: AppConstants.spacingM),
         SecondaryButton(
-          text: 'Join Course Code',
+          text: 'Group Sync',
           icon: Icons.group_add,
           onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Group sync feature - Coming soon!'),
-                backgroundColor: AppConstants.warningColor,
-              ),
-            );
+            Navigator.pushNamed(context, '/group-sync');
           },
         ),
       ],

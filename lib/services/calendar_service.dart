@@ -418,11 +418,24 @@ class CalendarService {
     try {
       print('Finding $sessionsCount study slots for $totalHours hours total');
 
+      // Ensure deadlineDate is always after startDate to avoid empty time range errors.
+      // If the event is past due, search the next 14 days from startDate.
+      final effectiveDeadline = deadlineDate.isAfter(startDate)
+          ? deadlineDate
+          : startDate.add(const Duration(days: 14));
+
+      if (!deadlineDate.isAfter(startDate)) {
+        print(
+          'Warning: deadlineDate ($deadlineDate) is not after startDate ($startDate). '
+          'Using fallback deadline: $effectiveDeadline',
+        );
+      }
+
       // Get busy times for the period
       final busyTimes = await getFreeBusySlots(
         calendarId,
         startDate,
-        deadlineDate,
+        effectiveDeadline,
       );
 
       final hoursPerSession = (totalHours / sessionsCount).ceil().clamp(
@@ -437,7 +450,7 @@ class CalendarService {
       // Try to find slots, spreading them across available days
       while (sessionsFound < sessionsCount &&
           currentDate.isBefore(
-            deadlineDate.subtract(const Duration(days: 1)),
+            effectiveDeadline.subtract(const Duration(days: 1)),
           )) {
         // Skip weekends for now (can be made configurable)
         if (currentDate.weekday == DateTime.saturday ||
