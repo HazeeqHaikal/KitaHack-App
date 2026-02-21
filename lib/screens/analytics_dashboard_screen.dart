@@ -1,12 +1,39 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/widgets/glass_container.dart';
+import 'package:due/providers/app_providers.dart';
+import 'package:due/models/academic_event.dart';
+import 'package:due/models/task.dart';
 
-class AnalyticsDashboardScreen extends StatelessWidget {
+class AnalyticsDashboardScreen extends ConsumerWidget {
   const AnalyticsDashboardScreen({super.key});
 
+  // parse duration strings like "2 hours", "1.5h", "30 min" into hours
+  double _parseDurationToHours(String raw) {
+    final s = raw.toLowerCase();
+    double hours = 0;
+
+    // hours portion (e.g. "2h", "2 hours")
+    final hMatch = RegExp(r"(\d+(?:\.\d+)?)\s*(?:h|hour)").firstMatch(s);
+    if (hMatch != null) {
+      hours += double.tryParse(hMatch.group(1)!) ?? 0;
+    }
+
+    // minutes portion (e.g. "30m", "30 min")
+    final mMatch = RegExp(r"(\d+)\s*(?:m|min)").firstMatch(s);
+    if (mMatch != null) {
+      hours += (double.tryParse(mMatch.group(1)!) ?? 0) / 60.0;
+    }
+
+    return hours;
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // This listens to the live state of all courses
+    final coursesAsync = ref.watch(coursesProvider);
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -24,274 +51,160 @@ class AnalyticsDashboardScreen extends StatelessWidget {
           ),
         ),
         child: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.all(AppConstants.spacingL),
-            children: [
-              // Mock Feature Banner
-              GlassContainer(
-                child: Container(
-                  padding: const EdgeInsets.all(AppConstants.spacingM),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Colors.orange.withOpacity(0.3),
-                      width: 1,
+          // Here we handle Loading, Error, and Data states
+          child: coursesAsync.when(
+            loading: () => const Center(
+              child: CircularProgressIndicator(color: AppConstants.primaryColor),
+            ),
+            error: (error, stack) => Center(
+              child: Text('Failed to load analytics: $error', style: const TextStyle(color: Colors.white)),
+            ),
+            data: (courses) {
+              // ---------------------------------------------------
+              // 1. DATA CRUNCHING (The "PHP/JS Logic" section)
+              // ---------------------------------------------------
+              int totalTasks = 0;
+              int completedTasks = 0;
+              double totalHours = 0;
+              
+              // Lists to hold dynamic UI widgets for the Course Performance section
+              List<Widget> courseProgressWidgets = [];
+
+              for (var course in courses) {
+                int courseTotalTasks = 0;
+                int courseCompletedTasks = 0;
+
+                for (var event in course.events) {
+                  // Assuming your Event model has a list of tasks. 
+                  // If tasks don't exist yet, you can track event completion instead.
+                  for (var task in event.generatedTasks ?? []) {
+                    totalTasks++;
+                    courseTotalTasks++;
+                    
+                    if (task.isCompleted) {
+                      completedTasks++;
+                      courseCompletedTasks++;
+                    }
+                    
+                    // Add up estimated time using your parsing function
+                    if (task.duration != null) {
+                       totalHours += _parseDurationToHours(task.duration!);
+                    }
+                  }
+                }
+
+                // Build a dynamic progress bar for each course
+                double courseProgress = courseTotalTasks == 0 ? 0 : courseCompletedTasks / courseTotalTasks;
+                courseProgressWidgets.add(
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: AppConstants.spacingM),
+                    child: _buildCourseProgress(
+                      course.courseCode ?? 'Course', // Use courseCode or name
+                      courseProgress, 
+                      courseCompletedTasks, 
+                      courseTotalTasks
+                    ),
+                  )
+                );
+              }
+
+              // Calculate overall app percentages
+              double completionRate = totalTasks == 0 ? 0 : completedTasks / totalTasks;
+              int completionPercentage = (completionRate * 100).round();
+
+              // ---------------------------------------------------
+              // 2. THE UI (The "HTML" section)
+              // ---------------------------------------------------
+              return ListView(
+                padding: const EdgeInsets.all(AppConstants.spacingL),
+                children: [
+                  // --- COMPLETION RATE CARD ---
+                  GlassContainer(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppConstants.spacingL),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: const [
+                              Text('Completion Rate', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                              Text('Overall', style: TextStyle(color: AppConstants.textSecondary, fontSize: 12)),
+                            ],
+                          ),
+                          const SizedBox(height: AppConstants.spacingL),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '$completionPercentage', // INJECTED REAL DATA
+                                style: const TextStyle(color: AppConstants.successColor, fontSize: 48, fontWeight: FontWeight.bold),
+                              ),
+                              const Text('%', style: TextStyle(color: AppConstants.successColor, fontSize: 24, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          const SizedBox(height: AppConstants.spacingM),
+                          LinearProgressIndicator(
+                            value: completionRate, // INJECTED REAL DATA
+                            backgroundColor: Colors.white.withOpacity(0.1),
+                            color: AppConstants.successColor,
+                            minHeight: 8,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          const SizedBox(height: AppConstants.spacingS),
+                          Text(
+                            '$completedTasks of $totalTasks tasks completed', // INJECTED REAL DATA
+                            style: const TextStyle(color: AppConstants.textSecondary, fontSize: 12),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.construction,
-                        color: Colors.orange,
-                        size: 24,
-                      ),
-                      const SizedBox(width: AppConstants.spacingM),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text(
-                              '🚧 Mock Feature (Phase 3)',
-                              style: TextStyle(
-                                color: Colors.orange,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              'UI complete - backend implementation pending',
-                              style: TextStyle(
-                                color: AppConstants.textSecondary,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppConstants.spacingXL),
+                  const SizedBox(height: AppConstants.spacingL),
 
-              // Completion Rate
-              GlassContainer(
-                child: Padding(
-                  padding: const EdgeInsets.all(AppConstants.spacingL),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: const [
-                          Text(
-                            'Completion Rate',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            'This Month',
-                            style: TextStyle(
-                              color: AppConstants.textSecondary,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: AppConstants.spacingL),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
+                  // --- STUDY PATTERNS CARD ---
+                  GlassContainer(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppConstants.spacingL),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            '87',
-                            style: TextStyle(
-                              color: AppConstants.successColor,
-                              fontSize: 48,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const Text(
-                            '%',
-                            style: TextStyle(
-                              color: AppConstants.successColor,
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(width: AppConstants.spacingS),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppConstants.successColor.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text(
-                              '↑ 12%',
-                              style: TextStyle(
-                                color: AppConstants.successColor,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
+                          const Text('Study Workload', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: AppConstants.spacingL),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _buildStatCard('Total Est. Hours', totalHours.toStringAsFixed(1), Icons.timer, AppConstants.primaryColor),
+                              _buildStatCard('Total Tasks', totalTasks.toString(), Icons.assignment, AppConstants.accentColor),
+                            ],
                           ),
                         ],
                       ),
-                      const SizedBox(height: AppConstants.spacingM),
-                      LinearProgressIndicator(
-                        value: 0.87,
-                        backgroundColor: Colors.white.withOpacity(0.1),
-                        color: AppConstants.successColor,
-                        minHeight: 8,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      const SizedBox(height: AppConstants.spacingS),
-                      const Text(
-                        '20 of 23 tasks completed',
-                        style: TextStyle(
-                          color: AppConstants.textSecondary,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(height: AppConstants.spacingL),
+                  const SizedBox(height: AppConstants.spacingL),
 
-              // Study Patterns
-              GlassContainer(
-                child: Padding(
-                  padding: const EdgeInsets.all(AppConstants.spacingL),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Study Patterns',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: AppConstants.spacingL),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  // --- COURSE PERFORMANCE CARD ---
+                  GlassContainer(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppConstants.spacingL),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildStatCard(
-                            'Total Hours',
-                            '42.5',
-                            Icons.timer,
-                            AppConstants.primaryColor,
-                          ),
-                          _buildStatCard(
-                            'Avg/Day',
-                            '3.2h',
-                            Icons.today,
-                            AppConstants.accentColor,
-                          ),
-                          _buildStatCard(
-                            'Peak Time',
-                            '2-5 PM',
-                            Icons.trending_up,
-                            Colors.amber,
-                          ),
+                          const Text('Course Progress', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: AppConstants.spacingL),
+                          
+                          // If there are no courses, show a placeholder. Otherwise, inject our dynamic list!
+                          if (courseProgressWidgets.isEmpty)
+                            const Text('No courses loaded yet.', style: TextStyle(color: AppConstants.textSecondary)),
+                          ...courseProgressWidgets,
                         ],
                       ),
-                      const SizedBox(height: AppConstants.spacingL),
-                      const Text(
-                        'Weekly Breakdown',
-                        style: TextStyle(
-                          color: AppConstants.textSecondary,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: AppConstants.spacingM),
-                      _buildWeeklyChart(),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(height: AppConstants.spacingL),
-
-              // Course Performance
-              GlassContainer(
-                child: Padding(
-                  padding: const EdgeInsets.all(AppConstants.spacingL),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Course Performance',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: AppConstants.spacingL),
-                      _buildCourseProgress('Thermodynamics', 0.92, 12, 13),
-                      const SizedBox(height: AppConstants.spacingM),
-                      _buildCourseProgress('Data Structures', 0.85, 11, 13),
-                      const SizedBox(height: AppConstants.spacingM),
-                      _buildCourseProgress('Linear Algebra', 0.78, 7, 9),
-                      const SizedBox(height: AppConstants.spacingM),
-                      _buildCourseProgress('Programming', 0.95, 19, 20),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppConstants.spacingL),
-
-              // Streaks & Achievements
-              GlassContainer(
-                child: Padding(
-                  padding: const EdgeInsets.all(AppConstants.spacingL),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Streaks & Achievements',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: AppConstants.spacingL),
-                      _buildAchievement(
-                        '🔥 Study Streak',
-                        '12 days in a row',
-                        'Keep going!',
-                        Colors.orange,
-                      ),
-                      const SizedBox(height: AppConstants.spacingM),
-                      _buildAchievement(
-                        '🎯 Perfect Week',
-                        'Completed all tasks',
-                        'Last week',
-                        AppConstants.successColor,
-                      ),
-                      const SizedBox(height: AppConstants.spacingM),
-                      _buildAchievement(
-                        '⚡ Early Bird',
-                        '8 tasks finished early',
-                        'This month',
-                        AppConstants.accentColor,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+                ],
+              );
+            },
           ),
         ),
       ),
