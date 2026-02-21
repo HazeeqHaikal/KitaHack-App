@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:due/models/academic_event.dart';
@@ -5,6 +6,7 @@ import 'package:due/services/storage_service.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/widgets/glass_container.dart';
 import 'package:due/services/youtube_service.dart';
+import 'package:due/services/gemini_service.dart';
 
 class ResourceFinderScreen extends StatefulWidget {
   const ResourceFinderScreen({super.key});
@@ -18,6 +20,11 @@ class _ResourceFinderScreenState extends State<ResourceFinderScreen> {
   bool _isSearching = false;
   String _selectedFilter = 'All';
 
+  // Optional resource bytes forwarded from EventDetailScreen
+  Uint8List? _contextBytes;
+  String? _contextExtension;
+  bool _argsLoaded = false;
+
   Future<void> _findResources(AcademicEvent event) async {
     setState(() {
       _isSearching = true;
@@ -26,15 +33,23 @@ class _ResourceFinderScreenState extends State<ResourceFinderScreen> {
 
     try {
       final youtubeService = YouTubeService();
-      
-      // 1. Fire the real API request!
-      final searchQuery = '${event.title} university tutorial';
+      final geminiService = GeminiService();
+
+      // 1. Use Gemini to extract the actual academic topic as the search query
+      final searchQuery = await geminiService.extractYouTubeSearchQuery(
+        event,
+        contextBytes: _contextBytes,
+        contextExtension: _contextExtension,
+      );
+      print('Resource Finder using query: $searchQuery');
+
+      // 2. Fire the real API request!
       final realVideos = await youtubeService.searchVideos(
         searchQuery,
         maxResults: 3, // Limit to top 3 for better UI and faster loading
       );
 
-      // 2. Add the bonus PDF Document search link
+      // 3. Add the bonus PDF Document search link
       realVideos.add({
         'title': '${event.title} PDF Study Guide',
         'type': 'Document',
@@ -44,18 +59,18 @@ class _ResourceFinderScreenState extends State<ResourceFinderScreen> {
         'channel': 'Google Scholar',
         'rating': 4.5,
         'thumbnail': '',
-        'url': 'https://google.com/search?q=${Uri.encodeComponent(event.title + " filetype:pdf")}',
+        'url':
+            'https://google.com/search?q=${Uri.encodeComponent(event.title + " filetype:pdf")}',
       });
 
-      // 3. Update the UI with real data
+      // 4. Update the UI with real data
       setState(() {
         _resources.addAll(realVideos);
         _isSearching = false;
       });
-      
     } catch (e) {
       print('YouTube API Error: $e');
-      // 4. Safety Net: Fallback to mock data if the API fails
+      // 5. Safety Net: Fallback to mock data if the API fails
       setState(() {
         _resources.addAll(_generateMockResources(event));
         _isSearching = false;
@@ -198,7 +213,20 @@ class _ResourceFinderScreenState extends State<ResourceFinderScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final event = ModalRoute.of(context)?.settings.arguments as AcademicEvent?;
+    final args = ModalRoute.of(context)?.settings.arguments;
+    final AcademicEvent? event;
+    if (args is AcademicEvent) {
+      event = args;
+    } else if (args is Map) {
+      event = args['event'] as AcademicEvent?;
+      if (!_argsLoaded) {
+        _argsLoaded = true;
+        _contextBytes = args['contextBytes'] as Uint8List?;
+        _contextExtension = args['contextExtension'] as String?;
+      }
+    } else {
+      event = null;
+    }
 
     if (event == null) {
       return _EventSelectionScreen(
@@ -211,7 +239,7 @@ class _ResourceFinderScreenState extends State<ResourceFinderScreen> {
     // Auto-search on first load
     if (_resources.isEmpty && !_isSearching) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _findResources(event);
+        _findResources(event!);
       });
     }
 
@@ -481,27 +509,32 @@ class _ResourceFinderScreenState extends State<ResourceFinderScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-  width: 80, // Set a fixed width for the thumbnail
-  height: 60, // Set a fixed height
-  decoration: BoxDecoration(
-    color: iconColor.withOpacity(0.2),
-    borderRadius: BorderRadius.circular(8),
-  ),
-  // ClipRRect is Flutter's version of CSS "overflow: hidden"
-  child: (resource['thumbnail'] != null && resource['thumbnail'].toString().isNotEmpty)
-      ? ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.network(
-            resource['thumbnail'] as String,
-            fit: BoxFit.cover, // This acts like CSS "object-fit: cover"
-            errorBuilder: (context, error, stackTrace) {
-              // If the image fails to load, fall back to the icon
-              return Center(child: Icon(icon, color: iconColor, size: 24));
-            },
-          ),
-        )
-      : Center(child: Icon(icon, color: iconColor, size: 24)),
-),
+                  width: 80, // Set a fixed width for the thumbnail
+                  height: 60, // Set a fixed height
+                  decoration: BoxDecoration(
+                    color: iconColor.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  // ClipRRect is Flutter's version of CSS "overflow: hidden"
+                  child:
+                      (resource['thumbnail'] != null &&
+                          resource['thumbnail'].toString().isNotEmpty)
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.network(
+                            resource['thumbnail'] as String,
+                            fit: BoxFit
+                                .cover, // This acts like CSS "object-fit: cover"
+                            errorBuilder: (context, error, stackTrace) {
+                              // If the image fails to load, fall back to the icon
+                              return Center(
+                                child: Icon(icon, color: iconColor, size: 24),
+                              );
+                            },
+                          ),
+                        )
+                      : Center(child: Icon(icon, color: iconColor, size: 24)),
+                ),
                 const SizedBox(width: AppConstants.spacingM),
                 Expanded(
                   child: Column(

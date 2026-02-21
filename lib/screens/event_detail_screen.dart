@@ -1,12 +1,237 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:due/models/academic_event.dart';
 import 'package:due/utils/constants.dart';
 import 'package:due/utils/date_formatter.dart';
 import 'package:due/widgets/glass_container.dart';
 import 'package:due/widgets/custom_buttons.dart';
 
-class EventDetailScreen extends StatelessWidget {
+class EventDetailScreen extends StatefulWidget {
   const EventDetailScreen({super.key});
+
+  @override
+  State<EventDetailScreen> createState() => _EventDetailScreenState();
+}
+
+class _EventDetailScreenState extends State<EventDetailScreen> {
+  Uint8List? _resourceBytes;
+  String? _resourceFileName;
+  String? _resourceExtension;
+
+  Future<void> _pickResourceFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+        withData: true,
+      );
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        final bytes = file.bytes;
+        if (bytes == null || bytes.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Could not read file. Please try again.'),
+                backgroundColor: AppConstants.errorColor,
+              ),
+            );
+          }
+          return;
+        }
+        final maxSize = 10 * 1024 * 1024;
+        if (file.size > maxSize) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('File too large. Maximum size is 10 MB.'),
+                backgroundColor: AppConstants.errorColor,
+              ),
+            );
+          }
+          return;
+        }
+        setState(() {
+          _resourceBytes = bytes;
+          _resourceFileName = file.name;
+          _resourceExtension = file.extension ?? 'pdf';
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('📄 Resource attached: ${file.name}'),
+              backgroundColor: AppConstants.successColor,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking file: $e'),
+            backgroundColor: AppConstants.errorColor,
+          ),
+        );
+      }
+    }
+  }
+
+  void _removeResourceFile() {
+    setState(() {
+      _resourceBytes = null;
+      _resourceFileName = null;
+      _resourceExtension = null;
+    });
+  }
+
+  /// Build the map of arguments passed to each Phase screen.
+  /// Includes the event plus optional resource bytes.
+  Map<String, dynamic> _phaseArgs(AcademicEvent event) => {
+    'event': event,
+    'contextBytes': _resourceBytes,
+    'contextExtension': _resourceExtension,
+    'contextFileName': _resourceFileName,
+  };
+
+  static const _skipWarningKey = 'skip_no_resource_warning';
+
+  /// Navigate to a phase screen. If no resource is attached and the user
+  /// hasn't dismissed the warning permanently, show a warning dialog first.
+  Future<void> _navigateToPhase(
+    BuildContext context,
+    AcademicEvent event,
+    String route,
+  ) async {
+    if (_resourceBytes != null) {
+      // Resource attached — go straight through.
+      Navigator.pushNamed(context, route, arguments: _phaseArgs(event));
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final skip = prefs.getBool(_skipWarningKey) ?? false;
+    if (skip) {
+      if (mounted) {
+        Navigator.pushNamed(context, route, arguments: _phaseArgs(event));
+      }
+      return;
+    }
+
+    // Show warning dialog.
+    if (!mounted) return;
+    bool dontShowAgain = false;
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: const Color(0xFF1E2340),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(
+              color: AppConstants.primaryColor.withValues(alpha: 0.4),
+              width: 1,
+            ),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.info_outline,
+                color: AppConstants.primaryColor,
+                size: 22,
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'No Resource Attached',
+                style: TextStyle(
+                  color: AppConstants.textPrimary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'You haven\'t attached an additional resource (e.g. assignment brief, rubric, or notes). '
+                'Adding one gives the AI more context and improves all three phases.',
+                style: TextStyle(
+                  color: AppConstants.textSecondary,
+                  fontSize: 14,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 16),
+              GestureDetector(
+                onTap: () => setLocal(() => dontShowAgain = !dontShowAgain),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: Checkbox(
+                        value: dontShowAgain,
+                        onChanged: (v) =>
+                            setLocal(() => dontShowAgain = v ?? false),
+                        activeColor: AppConstants.primaryColor,
+                        side: const BorderSide(
+                          color: AppConstants.textSecondary,
+                          width: 1.5,
+                        ),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      "Don't show again",
+                      style: TextStyle(
+                        color: AppConstants.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text(
+                'Add Resource',
+                style: TextStyle(color: AppConstants.primaryColor),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppConstants.primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('Continue Anyway'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (proceed == true) {
+      if (dontShowAgain) {
+        await prefs.setBool(_skipWarningKey, true);
+      }
+      if (mounted) {
+        Navigator.pushNamed(context, route, arguments: _phaseArgs(event));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -51,6 +276,8 @@ class EventDetailScreen extends StatelessWidget {
                 _buildEventHeader(context, event),
                 const SizedBox(height: AppConstants.spacingXL),
                 _buildEventInfo(context, event),
+                const SizedBox(height: AppConstants.spacingXL),
+                _buildResourceSection(context),
                 const SizedBox(height: AppConstants.spacingXL),
                 _buildSmartFeatures(context, event),
                 const SizedBox(height: AppConstants.spacingXL),
@@ -177,6 +404,113 @@ class EventDetailScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildResourceSection(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text(
+              '📎 Additional Resource',
+              style: TextStyle(
+                color: AppConstants.primaryColor,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppConstants.textSecondary.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                'Optional',
+                style: TextStyle(
+                  color: AppConstants.textSecondary,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        GlassContainer(
+          padding: const EdgeInsets.all(AppConstants.spacingM),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Upload a file (assignment brief, lecture notes, rubric…) to make all AI phases more accurate.',
+                style: TextStyle(
+                  color: AppConstants.textSecondary,
+                  fontSize: 12,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: AppConstants.spacingM),
+              if (_resourceBytes == null)
+                OutlinedButton.icon(
+                  onPressed: _pickResourceFile,
+                  icon: const Icon(Icons.attach_file),
+                  label: const Text('Attach File'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppConstants.secondaryColor,
+                    side: const BorderSide(color: AppConstants.secondaryColor),
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppConstants.spacingM,
+                    vertical: AppConstants.spacingS,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppConstants.successColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: AppConstants.successColor.withOpacity(0.4),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.insert_drive_file,
+                        color: AppConstants.successColor,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _resourceFileName ?? 'Attached file',
+                          style: const TextStyle(
+                            color: AppConstants.textPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        iconSize: 18,
+                        color: AppConstants.textSecondary,
+                        onPressed: _removeResourceFile,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildEventInfo(BuildContext context, AcademicEvent event) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -242,6 +576,28 @@ class EventDetailScreen extends StatelessWidget {
             fontWeight: FontWeight.bold,
           ),
         ),
+        if (_resourceBytes != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, bottom: 4),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.auto_awesome,
+                  color: AppConstants.secondaryColor,
+                  size: 14,
+                ),
+                const SizedBox(width: 4),
+                const Text(
+                  'Enhanced with your resource',
+                  style: TextStyle(
+                    color: AppConstants.secondaryColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
         const SizedBox(height: AppConstants.spacingM),
         _buildFeatureCard(
           context,
@@ -250,9 +606,7 @@ class EventDetailScreen extends StatelessWidget {
           subtitle: 'AI-powered task breakdown to beat procrastination',
           color: AppConstants.primaryColor,
           badge: 'Phase 1',
-          onTap: () {
-            Navigator.pushNamed(context, '/task-breakdown', arguments: event);
-          },
+          onTap: () => _navigateToPhase(context, event, '/task-breakdown'),
         ),
         const SizedBox(height: AppConstants.spacingM),
         _buildFeatureCard(
@@ -262,9 +616,7 @@ class EventDetailScreen extends StatelessWidget {
           subtitle: 'Find free time & book study sessions automatically',
           color: AppConstants.secondaryColor,
           badge: 'Phase 2',
-          onTap: () {
-            Navigator.pushNamed(context, '/study-allocator', arguments: event);
-          },
+          onTap: () => _navigateToPhase(context, event, '/study-allocator'),
         ),
         const SizedBox(height: AppConstants.spacingM),
         _buildFeatureCard(
@@ -274,9 +626,7 @@ class EventDetailScreen extends StatelessWidget {
           subtitle: 'Get top study videos & materials instantly',
           color: AppConstants.successColor,
           badge: 'Phase 3',
-          onTap: () {
-            Navigator.pushNamed(context, '/resource-finder', arguments: event);
-          },
+          onTap: () => _navigateToPhase(context, event, '/resource-finder'),
         ),
       ],
     );

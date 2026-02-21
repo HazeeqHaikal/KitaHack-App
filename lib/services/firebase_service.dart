@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -144,6 +145,53 @@ class FirebaseService {
       return downloadUrl;
     } catch (e) {
       print('Error uploading file: $e');
+      throw Exception('Failed to upload file: $e');
+    }
+  }
+
+  /// Upload raw bytes to Firebase Storage (works on web and native)
+  ///
+  /// [bytes]    - File contents as bytes
+  /// [fileName] - Original file name (used to preserve extension)
+  /// [userId]   - Optional user ID for organising files
+  /// Returns the download URL of the uploaded file
+  Future<String> uploadFileBytes(
+    Uint8List bytes,
+    String fileName, {
+    String? userId,
+  }) async {
+    if (!_initialized) {
+      throw Exception('Firebase not initialized. File storage unavailable.');
+    }
+
+    try {
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+
+      if (userId == null || userId.isEmpty) {
+        throw Exception('User must be signed in to upload files');
+      }
+
+      final filePath =
+          '${ApiConfig.syllabusStoragePath}/$userId/${timestamp}_$fileName';
+
+      print('Uploading bytes to: $filePath');
+
+      final ref = storage.ref().child(filePath);
+      final uploadTask = ref.putData(bytes);
+
+      uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
+        final progress =
+            (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        print('Upload progress: ${progress.toStringAsFixed(1)}%');
+      });
+
+      final snapshot = await uploadTask;
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+      print('File uploaded successfully: $downloadUrl');
+
+      return downloadUrl;
+    } catch (e) {
+      print('Error uploading file bytes: $e');
       throw Exception('Failed to upload file: $e');
     }
   }

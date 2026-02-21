@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:due/models/course_info.dart';
@@ -153,6 +154,96 @@ class ResponseCacheService {
     } catch (e) {
       print('Error caching response: $e');
       // Don't rethrow - caching is optional functionality
+    }
+  }
+
+  /// Generate a hash directly from raw bytes (works on web & native)
+  String _generateHashFromBytes(Uint8List bytes) {
+    final digest = sha256.convert(bytes);
+    return digest.toString();
+  }
+
+  /// Check if a cached response exists for raw file bytes
+  Future<bool> hasCachedResponseFromBytes(Uint8List bytes) async {
+    try {
+      final hash = _generateHashFromBytes(bytes);
+      final cache = await _loadCache();
+
+      if (!cache.containsKey(hash)) return false;
+
+      final entry = cache[hash] as Map<String, dynamic>;
+      final timestamp = DateTime.parse(entry['timestamp']);
+      final age = DateTime.now().difference(timestamp);
+
+      if (age.inDays > maxCacheAgeDays) {
+        cache.remove(hash);
+        await _saveCache(cache);
+        return false;
+      }
+
+      return true;
+    } catch (e) {
+      print('Error checking cache: $e');
+      return false;
+    }
+  }
+
+  /// Get cached response for raw file bytes
+  Future<CourseInfo?> getCachedResponseFromBytes(Uint8List bytes) async {
+    try {
+      final hash = _generateHashFromBytes(bytes);
+      final cache = await _loadCache();
+
+      if (!cache.containsKey(hash)) return null;
+
+      final entry = cache[hash] as Map<String, dynamic>;
+      final timestamp = DateTime.parse(entry['timestamp']);
+      final age = DateTime.now().difference(timestamp);
+
+      if (age.inDays > maxCacheAgeDays) {
+        cache.remove(hash);
+        await _saveCache(cache);
+        return null;
+      }
+
+      final courseData = entry['response'] as Map<String, dynamic>;
+      print('Using cached response (age: ${age.inHours} hours)');
+      return CourseInfo.fromJson(courseData);
+    } catch (e) {
+      print('Error getting cached response: $e');
+      return null;
+    }
+  }
+
+  /// Cache a response keyed by raw file bytes
+  Future<void> cacheResponseFromBytes(
+    Uint8List bytes,
+    CourseInfo courseInfo,
+  ) async {
+    try {
+      final hash = _generateHashFromBytes(bytes);
+      var cache = await _loadCache();
+
+      cache[hash] = {
+        'timestamp': DateTime.now().toIso8601String(),
+        'response': courseInfo.toJson(),
+      };
+
+      // Enforce cache size limit (remove oldest entries)
+      if (cache.length > maxCacheSize) {
+        final entries = cache.entries.toList()
+          ..sort((a, b) {
+            final aTime = DateTime.parse(a.value['timestamp']);
+            final bTime = DateTime.parse(b.value['timestamp']);
+            return aTime.compareTo(bTime);
+          });
+        cache = Map.fromEntries(entries.skip(cache.length - maxCacheSize));
+      }
+
+      await _saveCache(cache);
+      print('Cached response for bytes hash: $hash');
+    } catch (e) {
+      print('Error caching response: $e');
     }
   }
 

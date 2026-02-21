@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:due/config/api_config.dart';
 import 'package:due/models/course_info.dart';
@@ -27,11 +27,22 @@ class GeminiService {
   /// Analyze a syllabus file (PDF or Image) and extract academic events
   ///
   /// [file] - The syllabus file to analyze (PDF, JPG, PNG)
+  /// [existingEvents] - Events already saved from other courses; Gemini will
+  ///   skip anything that is clearly the same event already captured.
   /// Returns [CourseInfo] with extracted course details and events
   /// Throws [Exception] if analysis fails
-  Future<CourseInfo> analyzeSyllabus(File file) async {
+  /// [bytes]     - Raw file bytes (from PlatformFile.bytes — works on web & native)
+  /// [extension] - File extension without dot, e.g. 'pdf', 'jpg'
+  /// [fileName]  - Original file name, used for logging/cache keying
+  /// [existingEvents] - Events already saved; Gemini will skip real duplicates
+  Future<CourseInfo> analyzeSyllabus(
+    Uint8List bytes,
+    String extension,
+    String fileName, {
+    List<AcademicEvent> existingEvents = const [],
+  }) async {
     try {
-      print('Starting syllabus analysis for: ${file.path}');
+      print('Starting syllabus analysis for: $fileName');
 
       // Check if dev mode is enabled
       if (ApiConfig.devMode) {
@@ -43,7 +54,9 @@ class GeminiService {
 
       // Check cache first (if enabled)
       if (ApiConfig.enableResponseCache) {
-        final cachedResponse = await _responseCache.getCachedResponse(file);
+        final cachedResponse = await _responseCache.getCachedResponseFromBytes(
+          bytes,
+        );
         if (cachedResponse != null) {
           print('Using cached response (saved API call)');
           return cachedResponse;
@@ -61,19 +74,15 @@ class GeminiService {
         }
       }
 
-      // Read file as bytes
-      final bytes = await file.readAsBytes();
-
       // Determine MIME type based on file extension
-      final extension = file.path.split('.').last.toLowerCase();
-      final mimeType = _getMimeType(extension);
+      final mimeType = _getMimeType(extension.toLowerCase());
 
       if (mimeType == null) {
         throw Exception('Unsupported file type: $extension');
       }
 
       // Create the content with both prompt and file
-      final prompt = _buildAnalysisPrompt();
+      final prompt = _buildAnalysisPrompt(existingEvents: existingEvents);
       final content = [
         Content.multi([TextPart(prompt), DataPart(mimeType, bytes)]),
       ];
@@ -101,7 +110,7 @@ class GeminiService {
 
       // Cache the response (if enabled)
       if (ApiConfig.enableResponseCache) {
-        await _responseCache.cacheResponse(file, courseInfo);
+        await _responseCache.cacheResponseFromBytes(bytes, courseInfo);
       }
 
       return courseInfo;
@@ -130,12 +139,30 @@ class GeminiService {
   }
 
   /// Build the analysis prompt for Gemini
-  String _buildAnalysisPrompt() {
+  String _buildAnalysisPrompt({List<AcademicEvent> existingEvents = const []}) {
+    // Build the "already captured" section so Gemini can skip real duplicates
+    final String existingEventsSection = existingEvents.isEmpty
+        ? ''
+        : '''
+
+ALREADY-CAPTURED EVENTS (from other courses the student has previously uploaded):
+The following events are already saved in the student's calendar. If this syllabus mentions
+the SAME event (same or very similar name AND same date), do NOT include it in the output
+again — it would create a duplicate. Use your understanding of the context to judge whether
+they are truly the same institution-wide event (e.g. "Entrance Survey", "Exit Survey",
+"SuFo", mid-semester break) rather than a coincidentally similar course-specific activity.
+
+${existingEvents.map((e) {
+            final dateStr = e.dueDate.toIso8601String().substring(0, 10);
+            return '- "${e.title}" on $dateStr';
+          }).join('\n')}
+''';
+
     return '''
 Analyze this course syllabus document and extract all academic events, deadlines, and important dates.
 
 IMPORTANT: Return ONLY valid JSON, no markdown formatting, no code blocks, no explanations.
-
+$existingEventsSection
 Extract the following information in this EXACT JSON format:
 {
   "courseName": "Full course name",
@@ -222,8 +249,10 @@ If you cannot extract a value, use null. If the document is not a syllabus, retu
     String eventType,
     String description,
     int? weightage,
-    int daysUntilDue,
-  ) async {
+    int daysUntilDue, {
+    Uint8List? contextBytes,
+    String? contextExtension,
+  }) async {
     try {
       print('Estimating study effort for: $eventTitle');
 
@@ -282,9 +311,21 @@ Guidelines:
 Recommend 2-5 study sessions total.
 ''';
 
-      final content = [Content.text(prompt)];
+      final List<Content> effortContent;
+      if (contextBytes != null && contextExtension != null) {
+        final mimeType = _getMimeType(contextExtension.toLowerCase());
+        if (mimeType != null) {
+          effortContent = [
+            Content.multi([TextPart(prompt), DataPart(mimeType, contextBytes)]),
+          ];
+        } else {
+          effortContent = [Content.text(prompt)];
+        }
+      } else {
+        effortContent = [Content.text(prompt)];
+      }
 
-      final response = await _generateWithRetry(content);
+      final response = await _generateWithRetry(effortContent);
 
       if (response.text == null || response.text!.isEmpty) {
         throw Exception('Empty response from Gemini API');
@@ -313,6 +354,75 @@ Recommend 2-5 study sessions total.
     }
   }
 
+  /// Extract an ideal YouTube search query from the full academic event context
+  /// Returns a concise, topic-accurate search string (e.g. "Object Oriented Programming tutorial")
+  Future<String> extractYouTubeSearchQuery(
+    AcademicEvent event, {
+    Uint8List? contextBytes,
+    String? contextExtension,
+  }) async {
+    try {
+      print('Extracting YouTube search query for: ${event.title}');
+
+      if (ApiConfig.devMode) {
+        return '${event.title} tutorial';
+      }
+
+      if (ApiConfig.enableUsageTracking) {
+        await _usageTracking.logApiCall('youtube_query');
+      }
+
+      final prompt =
+          '''
+You are helping a student find educational YouTube videos for their academic task.
+
+Task Details:
+- Title: ${event.title}
+- Type: ${event.type.toString().split('.').last}
+- Description: ${event.description}
+${event.weightage != null ? '- Weightage: ${event.weightage}' : ''}
+
+Based on the ACTUAL academic topic described above (not just the task title), generate the single most effective YouTube search query to find helpful tutorial or study videos.
+
+Rules:
+- Focus on the core subject/topic, not the task name (e.g. do NOT return "Lab Exercise 1" — return the real topic like "Object Oriented Programming")
+- Keep it concise: 3-6 words
+- Add "tutorial" or "explained" if helpful
+- Return ONLY the search query string, nothing else, no quotes, no punctuation at end
+''';
+
+      final List<Content> queryContent;
+      if (contextBytes != null && contextExtension != null) {
+        final mimeType = _getMimeType(contextExtension.toLowerCase());
+        if (mimeType != null) {
+          queryContent = [
+            Content.multi([TextPart(prompt), DataPart(mimeType, contextBytes)]),
+          ];
+        } else {
+          queryContent = [Content.text(prompt)];
+        }
+      } else {
+        queryContent = [Content.text(prompt)];
+      }
+      final response = await _generateWithRetry(queryContent);
+
+      if (response.text == null || response.text!.isEmpty) {
+        throw Exception('Empty response');
+      }
+
+      final query = response.text!
+          .trim()
+          .replaceAll('"', '')
+          .replaceAll("'", '');
+      print('Extracted search query: $query');
+      return query;
+    } catch (e) {
+      print('Error extracting search query: $e');
+      // Fallback: use event title
+      return '${event.title} tutorial';
+    }
+  }
+
   /// Generate task breakdown for an academic event
   ///
   /// Option 1: Simple mode - uses only event data
@@ -323,7 +433,8 @@ Recommend 2-5 study sessions total.
   /// Returns List of [Task] objects with titles, durations, and descriptions
   Future<List<Task>> generateTaskBreakdown(
     AcademicEvent event, {
-    File? contextFile,
+    Uint8List? contextBytes,
+    String? contextExtension,
   }) async {
     try {
       print('Generating task breakdown for: ${event.title}');
@@ -340,20 +451,19 @@ Recommend 2-5 study sessions total.
 
       List<Content> content;
 
-      if (contextFile != null) {
+      if (contextBytes != null && contextExtension != null) {
         print('Enhanced mode: Including uploaded context file');
-        // Option 2: Enhanced mode with uploaded file
-        final bytes = await contextFile.readAsBytes();
-        final extension = contextFile.path.split('.').last.toLowerCase();
-        final mimeType = _getMimeType(extension);
-
-        if (mimeType == null) {
-          throw Exception('Unsupported file type: $extension');
+        final mimeType = _getMimeType(contextExtension.toLowerCase());
+        if (mimeType != null) {
+          content = [
+            Content.multi([TextPart(prompt), DataPart(mimeType, contextBytes)]),
+          ];
+        } else {
+          print(
+            'Unsupported file type: $contextExtension — falling back to text-only',
+          );
+          content = [Content.text(prompt)];
         }
-
-        content = [
-          Content.multi([TextPart(prompt), DataPart(mimeType, bytes)]),
-        ];
       } else {
         print('Simple mode: Using event data only');
         // Option 1: Simple mode with just event data

@@ -1,4 +1,5 @@
-import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
@@ -27,7 +28,9 @@ class _UploadScreenState extends ConsumerState<UploadScreen>
     with SingleTickerProviderStateMixin {
   String? _fileName;
   String? _fileType;
-  File? _selectedFile;
+  // Cross-platform: bytes work on both web and native
+  PlatformFile? _pickedFile;
+  Uint8List? _pickedFileBytes;
   bool _isProcessing = false;
   String _processingStatus = '';
   late AnimationController _animationController;
@@ -64,22 +67,22 @@ class _UploadScreenState extends ConsumerState<UploadScreen>
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
-        withData: false,
+        // withData: true ensures bytes are available on ALL platforms (required on web)
+        withData: true,
         withReadStream: false,
       );
 
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
-        final filePath = file.path;
+        final bytes = file.bytes;
 
-        if (filePath == null) {
-          _showError('Could not access the selected file');
+        if (bytes == null || bytes.isEmpty) {
+          _showError('Could not read file contents. Please try again.');
           return;
         }
 
-        final fileSize = File(filePath).lengthSync();
-        final maxSize =
-            AppConstants.maxFileSizeMB * 1024 * 1024; // Convert MB to bytes
+        final fileSize = file.size;
+        final maxSize = AppConstants.maxFileSizeMB * 1024 * 1024;
 
         if (fileSize > maxSize) {
           _showError(
@@ -89,7 +92,8 @@ class _UploadScreenState extends ConsumerState<UploadScreen>
         }
 
         setState(() {
-          _selectedFile = File(filePath);
+          _pickedFile = file;
+          _pickedFileBytes = bytes;
           _fileName = file.name;
           _fileType = file.extension;
         });
@@ -128,12 +132,13 @@ class _UploadScreenState extends ConsumerState<UploadScreen>
     setState(() {
       _fileName = null;
       _fileType = null;
-      _selectedFile = null;
+      _pickedFile = null;
+      _pickedFileBytes = null;
     });
   }
 
   void _processFile() async {
-    if (_selectedFile == null) {
+    if (_pickedFile == null || _pickedFileBytes == null) {
       _showError('No file selected');
       return;
     }
@@ -147,13 +152,15 @@ class _UploadScreenState extends ConsumerState<UploadScreen>
       String? downloadUrl;
 
       // Optional: Upload to Firebase Storage (if available)
-      if (_firebaseService.isAvailable) {
+      // Uses bytes-based upload so it works on web and native alike
+      if (_firebaseService.isAvailable && !kIsWeb) {
         setState(() {
           _processingStatus = 'Uploading to secure storage...';
         });
 
-        downloadUrl = await _firebaseService.uploadFile(
-          _selectedFile!,
+        downloadUrl = await _firebaseService.uploadFileBytes(
+          _pickedFileBytes!,
+          _pickedFile!.name,
           userId: _firebaseService.currentUser?.uid,
         );
       }
@@ -163,7 +170,19 @@ class _UploadScreenState extends ConsumerState<UploadScreen>
         _processingStatus = 'Analyzing syllabus with AI...';
       });
 
-      var courseInfo = await _geminiService.analyzeSyllabus(_selectedFile!);
+      // Collect all events already saved across other courses so Gemini can
+      // avoid re-extracting institution-wide duplicates (e.g. Entrance Survey).
+      final existingCourses = await ref
+          .read(storageServiceProvider)
+          .getAllCourses();
+      final existingEvents = existingCourses.expand((c) => c.events).toList();
+
+      var courseInfo = await _geminiService.analyzeSyllabus(
+        _pickedFileBytes!,
+        _pickedFile!.extension ?? 'pdf',
+        _pickedFile!.name,
+        existingEvents: existingEvents,
+      );
 
       // Attach the file URL if available
       if (downloadUrl != null) {
@@ -670,10 +689,12 @@ class _UploadScreenState extends ConsumerState<UploadScreen>
   }
 
   Future<void> _checkCachedResponse() async {
-    if (_selectedFile == null) return;
+    if (_pickedFileBytes == null) return;
 
     try {
-      final hasCache = await _responseCache.hasCachedResponse(_selectedFile!);
+      final hasCache = await _responseCache.hasCachedResponseFromBytes(
+        _pickedFileBytes!,
+      );
       setState(() {
         _hasCachedResponse = hasCache;
       });

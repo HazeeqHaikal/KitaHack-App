@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:due/models/academic_event.dart';
 import 'package:due/utils/constants.dart';
@@ -18,6 +19,11 @@ class StudyAllocatorScreen extends StatefulWidget {
 class _StudyAllocatorScreenState extends State<StudyAllocatorScreen> {
   final GeminiService _geminiService = GeminiService();
   final CalendarService _calendarService = CalendarService();
+
+  // Optional resource bytes forwarded from EventDetailScreen
+  Uint8List? _contextBytes;
+  String? _contextExtension;
+  bool _argsLoaded = false;
 
   final List<Map<String, dynamic>> _studySessions = [];
   bool _isAllocating = false;
@@ -43,6 +49,8 @@ class _StudyAllocatorScreenState extends State<StudyAllocatorScreen> {
         event.description,
         int.tryParse(event.weightage?.replaceAll('%', '') ?? ''),
         event.daysUntilDue,
+        contextBytes: _contextBytes,
+        contextExtension: _contextExtension,
       );
 
       _totalStudyHours = effortEstimate['totalHours'] as int;
@@ -211,7 +219,20 @@ class _StudyAllocatorScreenState extends State<StudyAllocatorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final event = ModalRoute.of(context)?.settings.arguments as AcademicEvent?;
+    final args = ModalRoute.of(context)?.settings.arguments;
+    final AcademicEvent? event;
+    if (args is AcademicEvent) {
+      event = args;
+    } else if (args is Map) {
+      event = args['event'] as AcademicEvent?;
+      if (!_argsLoaded) {
+        _argsLoaded = true;
+        _contextBytes = args['contextBytes'] as Uint8List?;
+        _contextExtension = args['contextExtension'] as String?;
+      }
+    } else {
+      event = null;
+    }
 
     if (event == null) {
       return const Scaffold(body: Center(child: Text('Event not found')));
@@ -220,7 +241,7 @@ class _StudyAllocatorScreenState extends State<StudyAllocatorScreen> {
     // Auto-allocate on first load
     if (_studySessions.isEmpty && !_isAllocating) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _allocateStudySessions(event);
+        _allocateStudySessions(event!);
       });
     }
 
@@ -474,7 +495,7 @@ class _StudyAllocatorScreenState extends State<StudyAllocatorScreen> {
                   child: PrimaryButton(
                     text: 'Book All Study Sessions to Calendar',
                     icon: Icons.add_to_photos,
-                    onPressed: () => _bookStudySessions(event),
+                    onPressed: () => _bookStudySessions(event!),
                   ),
                 ),
             ],

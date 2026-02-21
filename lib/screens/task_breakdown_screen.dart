@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
@@ -22,9 +22,13 @@ class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
   final GeminiService _geminiService = GeminiService();
   List<Task> _tasks = [];
   bool _isGenerating = false;
-  File? _contextFile;
+  Uint8List? _contextBytes;
+  String? _contextFileName;
+  String? _contextExtension;
   String? _errorMessage;
   bool _hasGenerated = false;
+  // Ensures we only read navigation args once
+  bool _argsLoaded = false;
 
   Future<void> _generateTaskBreakdown(AcademicEvent event) async {
     setState(() {
@@ -33,10 +37,11 @@ class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
     });
 
     try {
-      // Call Gemini API with optional context file
+      // Call Gemini API with optional context bytes
       final tasks = await _geminiService.generateTaskBreakdown(
         event,
-        contextFile: _contextFile,
+        contextBytes: _contextBytes,
+        contextExtension: _contextExtension,
       );
 
       setState(() {
@@ -54,7 +59,7 @@ class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '✓ Generated ${tasks.length} tasks ${_contextFile != null ? 'with enhanced context' : 'successfully'}',
+              '✓ Generated ${tasks.length} tasks ${_contextBytes != null ? 'with enhanced context' : 'successfully'}',
             ),
             backgroundColor: AppConstants.successColor,
           ),
@@ -107,14 +112,25 @@ class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
         type: FileType.custom,
         allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
         allowMultiple: false,
+        withData: true,
       );
 
-      if (result != null && result.files.single.path != null) {
-        final file = File(result.files.single.path!);
-        final fileSize = await file.length();
-        final maxSize = 10 * 1024 * 1024; // 10MB
-
-        if (fileSize > maxSize) {
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        final bytes = file.bytes;
+        if (bytes == null || bytes.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Could not read file. Please try again.'),
+                backgroundColor: AppConstants.errorColor,
+              ),
+            );
+          }
+          return;
+        }
+        final maxSize = 10 * 1024 * 1024; // 10 MB
+        if (file.size > maxSize) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -125,15 +141,15 @@ class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
           }
           return;
         }
-
         setState(() {
-          _contextFile = file;
+          _contextBytes = bytes;
+          _contextFileName = file.name;
+          _contextExtension = file.extension ?? 'pdf';
         });
-
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('📄 Added: ${result.files.single.name}'),
+              content: Text('📄 Added: ${file.name}'),
               backgroundColor: AppConstants.successColor,
             ),
           );
@@ -153,7 +169,9 @@ class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
 
   void _removeContextFile() {
     setState(() {
-      _contextFile = null;
+      _contextBytes = null;
+      _contextFileName = null;
+      _contextExtension = null;
     });
   }
 
@@ -171,7 +189,34 @@ class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final event = ModalRoute.of(context)?.settings.arguments as AcademicEvent?;
+    final args = ModalRoute.of(context)?.settings.arguments;
+    // Support both old (AcademicEvent) and new (Map with event + context) args
+    final AcademicEvent? event;
+    if (args is AcademicEvent) {
+      event = args;
+    } else if (args is Map) {
+      event = args['event'] as AcademicEvent?;
+      // Pre-load context bytes passed from event detail screen
+      if (!_argsLoaded) {
+        _argsLoaded = true;
+        final bytes = args['contextBytes'] as Uint8List?;
+        if (bytes != null) {
+          // Schedule setState after build
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {
+                _contextBytes = bytes;
+                _contextFileName = args['contextFileName'] as String?;
+                _contextExtension =
+                    args['contextExtension'] as String? ?? 'pdf';
+              });
+            }
+          });
+        }
+      }
+    } else {
+      event = null;
+    }
 
     if (event == null) {
       return _EventSelectionScreen(
@@ -193,16 +238,16 @@ class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
         AcademicEvent? latestEvent;
         for (var course in courses) {
           final foundEvent = course.events.firstWhere(
-            (e) => e.id == event.id,
-            orElse: () => event,
+            (e) => e.id == event!.id,
+            orElse: () => event!,
           );
-          if (foundEvent.id == event.id) {
+          if (foundEvent.id == event!.id) {
             latestEvent = foundEvent;
             break;
           }
         }
 
-        final eventToUse = latestEvent ?? event;
+        final eventToUse = latestEvent ?? event!;
 
         if (eventToUse.generatedTasks != null &&
             eventToUse.generatedTasks!.isNotEmpty) {
@@ -235,14 +280,14 @@ class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
         foregroundColor: AppConstants.textPrimary,
         elevation: 0,
         actions: [
-          if (_contextFile != null || _hasGenerated)
+          if (_contextBytes != null || _hasGenerated)
             IconButton(
               icon: const Icon(Icons.refresh),
               tooltip: 'Regenerate Tasks',
               onPressed: _isGenerating
                   ? null
                   : () {
-                      _generateTaskBreakdown(event);
+                      _generateTaskBreakdown(event!);
                     },
             ),
         ],
@@ -277,7 +322,7 @@ class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
                             ),
                             const SizedBox(height: AppConstants.spacingS),
                             Text(
-                              _contextFile != null
+                              _contextBytes != null
                                   ? 'Using enhanced context from uploaded file'
                                   : 'Using event details',
                               style: TextStyle(
@@ -313,7 +358,7 @@ class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
                               const SizedBox(height: AppConstants.spacingM),
                               ElevatedButton.icon(
                                 onPressed: () {
-                                  _generateTaskBreakdown(event);
+                                  _generateTaskBreakdown(event!);
                                 },
                                 icon: const Icon(Icons.refresh),
                                 label: const Text('Try Again'),
@@ -366,7 +411,7 @@ class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
                               padding: const EdgeInsets.only(
                                 bottom: AppConstants.spacingM,
                               ),
-                              child: _buildHeaderCard(event),
+                              child: _buildHeaderCard(event!),
                             );
                           }
                           currentIndex++;
@@ -391,7 +436,7 @@ class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
                                 padding: const EdgeInsets.only(
                                   bottom: AppConstants.spacingM,
                                 ),
-                                child: _buildUploadSection(event),
+                                child: _buildUploadSection(event!),
                               );
                             }
                             currentIndex++;
@@ -413,7 +458,7 @@ class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
                           // Task cards
                           final taskIndex = index - currentIndex;
                           if (taskIndex >= 0 && taskIndex < _tasks.length) {
-                            return _buildTaskCard(taskIndex, event);
+                            return _buildTaskCard(taskIndex, event!);
                           }
 
                           return const SizedBox.shrink();
@@ -739,7 +784,7 @@ class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
                   ),
                 ),
               ),
-              if (_contextFile != null)
+              if (_contextBytes != null)
                 const Icon(
                   Icons.check_circle,
                   color: AppConstants.successColor,
@@ -753,7 +798,7 @@ class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
             style: TextStyle(color: AppConstants.textSecondary, fontSize: 12),
           ),
           const SizedBox(height: AppConstants.spacingM),
-          if (_contextFile == null)
+          if (_contextBytes == null)
             OutlinedButton.icon(
               onPressed: _pickContextFile,
               icon: const Icon(Icons.add_circle_outline),
@@ -783,7 +828,7 @@ class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      _contextFile!.path.split('/').last,
+                      _contextFileName ?? 'Attached file',
                       style: const TextStyle(
                         color: AppConstants.textPrimary,
                         fontSize: 12,
@@ -800,7 +845,7 @@ class _TaskBreakdownScreenState extends ConsumerState<TaskBreakdownScreen> {
                 ],
               ),
             ),
-          if (_contextFile != null) ...[
+          if (_contextBytes != null) ...[
             const SizedBox(height: AppConstants.spacingS),
             ElevatedButton.icon(
               onPressed: () {
