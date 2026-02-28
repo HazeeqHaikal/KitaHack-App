@@ -47,31 +47,29 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBKvMMwgMeU5dfO9h3l9kt6vFAVwkeojgg',
-    appId: '1:64008081491:android:78d36d1ce1af3e503276a6',
-    messagingSenderId: '64008081491',
-    projectId: 'gen-lang-client-0596703750',
-    storageBucket: 'gen-lang-client-0596703750.firebasestorage.app',
+    apiKey: 'AIzaSyBxhV3v_witI45_vc5JR0M8QJOjzjxy0_I',
+    appId: '1:896519692444:android:dfc0060bccef07b7a4cd59',
+    messagingSenderId: '896519692444',
+    projectId: 'kitahack-app-e2fb3',
+    storageBucket: 'kitahack-app-e2fb3.firebasestorage.app',
   );
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyBfHv5QHkjV8GS5yIto-7DUqnhZRNd8cKA',
-    appId: '1:64008081491:web:57581902aece732c3276a6',
-    messagingSenderId: '64008081491',
-    projectId: 'gen-lang-client-0596703750',
-    authDomain: 'gen-lang-client-0596703750.firebaseapp.com',
-    storageBucket: 'gen-lang-client-0596703750.firebasestorage.app',
-    measurementId: 'G-LLKZSTD2JB',
+    apiKey: 'AIzaSyB4oVYZ9QS6Jw1lHsHXnVXBZkTgHHGtrFo',
+    appId: '1:896519692444:web:18ee64da5514af12a4cd59',
+    messagingSenderId: '896519692444',
+    projectId: 'kitahack-app-e2fb3',
+    authDomain: 'kitahack-app-e2fb3.firebaseapp.com',
+    storageBucket: 'kitahack-app-e2fb3.firebasestorage.app',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyBfHv5QHkjV8GS5yIto-7DUqnhZRNd8cKA',
-    appId: '1:64008081491:web:aef970ff12bdbbd23276a6',
-    messagingSenderId: '64008081491',
-    projectId: 'gen-lang-client-0596703750',
-    authDomain: 'gen-lang-client-0596703750.firebaseapp.com',
-    storageBucket: 'gen-lang-client-0596703750.firebasestorage.app',
-    measurementId: 'G-ZS0D1CJ6KF',
+    apiKey: 'AIzaSyB4oVYZ9QS6Jw1lHsHXnVXBZkTgHHGtrFo',
+    appId: '1:896519692444:web:91bab0a07d187193a4cd59',
+    messagingSenderId: '896519692444',
+    projectId: 'kitahack-app-e2fb3',
+    authDomain: 'kitahack-app-e2fb3.firebaseapp.com',
+    storageBucket: 'kitahack-app-e2fb3.firebasestorage.app',
   );
 
 }

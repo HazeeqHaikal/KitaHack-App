@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:due/utils/constants.dart';
@@ -151,18 +153,41 @@ class _UploadScreenState extends ConsumerState<UploadScreen>
     try {
       String? downloadUrl;
 
-      // Optional: Upload to Firebase Storage (if available)
-      // Uses bytes-based upload so it works on web and native alike
-      if (_firebaseService.isAvailable && !kIsWeb) {
+      // Upload to Firebase Storage if available, otherwise save locally
+      if (!kIsWeb) {
         setState(() {
-          _processingStatus = 'Uploading to secure storage...';
+          _processingStatus = 'Saving file...';
         });
 
-        downloadUrl = await _firebaseService.uploadFileBytes(
-          _pickedFileBytes!,
-          _pickedFile!.name,
-          userId: _firebaseService.currentUser?.uid,
-        );
+        if (_firebaseService.isAvailable) {
+          try {
+            downloadUrl = await _firebaseService.uploadFileBytes(
+              _pickedFileBytes!,
+              _pickedFile!.name,
+              userId: _firebaseService.currentUser?.uid,
+            );
+          } catch (storageError) {
+            print(
+              'Firebase Storage unavailable, saving locally: $storageError',
+            );
+          }
+        }
+
+        // Fallback: save locally if Firebase Storage failed or unavailable
+        if (downloadUrl == null) {
+          try {
+            final dir = await getApplicationDocumentsDirectory();
+            final timestamp = DateTime.now().millisecondsSinceEpoch;
+            final localFile = File(
+              '${dir.path}/${timestamp}_${_pickedFile!.name}',
+            );
+            await localFile.writeAsBytes(_pickedFileBytes!);
+            downloadUrl = localFile.path;
+            print('File saved locally: ${localFile.path}');
+          } catch (localError) {
+            print('Local save failed: $localError');
+          }
+        }
       }
 
       // Analyze with Gemini
